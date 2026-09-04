@@ -26,8 +26,10 @@ dependencies {
 tasks.withType<JavaCompile>().configureEach {
     options.release = 17
     options.encoding = "UTF-8"
+    val lint = mutableListOf("all", "-serial", "-processing")
+    if (JavaVersion.current() >= JavaVersion.VERSION_21) lint += "-this-escape"
     options.compilerArgs.addAll(
-        listOf("-Xlint:all,-serial,-this-escape,-processing", "-Werror")
+        listOf("-Xlint:" + lint.joinToString(","), "-Werror")
     )
 }
 
