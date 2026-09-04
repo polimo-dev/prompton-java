@@ -24,11 +24,11 @@ class TruncationConformanceTest {
                 Payload.Options options = new Payload.Options(
                         config != null && Boolean.TRUE.equals(config.get("hash_end_user")), null);
                 Map<String, Object> actual = Payload.apply(
-                        Json.mapAt(testCase, "generation"),
+                        Json.mapAt(testCase, "log"),
                         PayloadPolicy.fromMap(Json.mapAt(testCase, "policy")),
                         options);
                 Map<String, Object> expected =
-                        Json.mapAt(Json.mapAt(testCase, "expect"), "generation");
+                        Json.mapAt(Json.mapAt(testCase, "expect"), "log");
                 assertEquals(Json.canonical(expected), Json.canonical(actual), name);
             }));
         }

@@ -1,7 +1,7 @@
 package dev.polimo.prompton;
 
 /**
- * A snapshot of the monitoring-log buffer, for a health endpoint or a test.
+ * A current view of the monitoring-log buffer, for a health endpoint or a test.
  *
  * @param queued records waiting to be sent, including those in a batch awaiting retry
  * @param queuedBytes their encoded size

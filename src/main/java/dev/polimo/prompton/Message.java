@@ -8,8 +8,7 @@ import java.util.Objects;
  * One chat message: a role, its content, and an optional name.
  *
  * @param role the message role, for example {@code system} or {@code user}
- * @param content the message content — the raw template on a {@link Resolution}, the rendered text
- *     after {@code render}
+ * @param content the message content — the raw template on a {@link UseCase}, or rendered text
  * @param name the optional {@code name} field, or {@code null}
  */
 public record Message(String role, String content, String name) {
@@ -41,7 +40,7 @@ public record Message(String role, String content, String name) {
         return map;
     }
 
-    /** Reads a message out of a snapshot or a request body. */
+    /** Reads a message out of a use-case document or a request body. */
     public static Message fromMap(Map<String, Object> map) {
         Object role = map.get("role");
         Object content = map.get("content");

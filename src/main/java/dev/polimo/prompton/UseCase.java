@@ -4,31 +4,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What to use for one call: the pin the snapshot holds for a use case, prompt name and environment.
+ * What to use for one call: the use-case document-backed configuration for a use case, prompt name and
+ * environment.
  *
- * <p>The app sends {@link #model()} with {@link #effectiveParams()} and
- * {@link #effectiveProviderOptions()} to {@link #provider()} using <em>its own</em> key and HTTP
+ * <p>The app sends {@link #model()} with {@link #params()} and
+ * {@link #providerOptions()} to {@link #provider()} using <em>its own</em> key and HTTP
  * client, and records {@link #deploymentId()}, {@link #deploymentRevision()}, {@link #prompt()} and
  * {@link #promptVersionId()} in the monitoring log so a change in behaviour can be traced back to a
  * revision.
  *
- * <p>{@link #messages()} and {@link #textTemplate()} are the raw templates. Rendering is a separate
- * step ({@link PromptOn#renderMessages}, {@link PromptOn#renderText}) because a resolution is
- * reusable across calls while the variables are not.
+ * <p>{@link #messages()} and {@link #textTemplate()} are the raw templates. Use
+ * {@link #messages(Map)} or {@link #text(Map)} for the rendered prompt for one call.
  */
-public final class Resolution {
+public final class UseCase {
 
-    private final String useCase;
+    private final PromptOn client;
+    private final String key;
     private final UseCaseKind kind;
     private final String deploymentId;
     private final Integer deploymentRevision;
     private final String prompt;
-    private final List<String> availablePrompts;
+    private final List<String> promptNames;
     private final String model;
     private final String modelId;
     private final String provider;
-    private final Map<String, Object> effectiveParams;
-    private final Map<String, Object> effectiveProviderOptions;
+    private final Map<String, Object> params;
+    private final Map<String, Object> providerOptions;
     private final String promptVersionId;
     private final Integer promptVersionNumber;
     private final Template.Engine engine;
@@ -36,22 +37,23 @@ public final class Resolution {
     private final String textTemplate;
     private final List<Map<String, Object>> inputSchema;
     private final PayloadPolicy payloadPolicy;
-    private final ResolutionSource source;
+    private final Source source;
     private final String etag;
     private final List<String> warnings;
 
-    Resolution(Builder builder) {
-        this.useCase = builder.useCase;
+    UseCase(Builder builder) {
+        this.client = builder.client;
+        this.key = builder.key;
         this.kind = builder.kind;
         this.deploymentId = builder.deploymentId;
         this.deploymentRevision = builder.deploymentRevision;
         this.prompt = builder.prompt;
-        this.availablePrompts = List.copyOf(builder.availablePrompts);
+        this.promptNames = List.copyOf(builder.promptNames);
         this.model = builder.model;
         this.modelId = builder.modelId;
         this.provider = builder.provider;
-        this.effectiveParams = frozen(builder.effectiveParams);
-        this.effectiveProviderOptions = frozen(builder.effectiveProviderOptions);
+        this.params = frozen(builder.params);
+        this.providerOptions = frozen(builder.providerOptions);
         this.promptVersionId = builder.promptVersionId;
         this.promptVersionNumber = builder.promptVersionNumber;
         this.engine = builder.engine;
@@ -62,6 +64,10 @@ public final class Resolution {
         this.source = builder.source;
         this.etag = builder.etag;
         this.warnings = List.copyOf(builder.warnings);
+    }
+
+    UseCase attachTo(PromptOn client) {
+        return new Builder(this).client(client).build();
     }
 
     /**
@@ -75,8 +81,8 @@ public final class Resolution {
     }
 
     /** The use case key. */
-    public String useCase() {
-        return useCase;
+    public String key() {
+        return key;
     }
 
     /** Whether this is a chat, text or embedding call. */
@@ -100,8 +106,8 @@ public final class Resolution {
     }
 
     /** Every prompt name the live deployment pins, sorted. */
-    public List<String> availablePrompts() {
-        return availablePrompts;
+    public List<String> promptNames() {
+        return promptNames;
     }
 
     /** The provider model string to send to the provider, for example {@code openai/gpt-4o-mini}. */
@@ -120,13 +126,13 @@ public final class Resolution {
     }
 
     /** {@code use_case.default_params} with {@code deployment.params} layered on top. */
-    public Map<String, Object> effectiveParams() {
-        return effectiveParams;
+    public Map<String, Object> params() {
+        return params;
     }
 
     /** {@code model.provider_options} with {@code deployment.provider_options} layered on top. */
-    public Map<String, Object> effectiveProviderOptions() {
-        return effectiveProviderOptions;
+    public Map<String, Object> providerOptions() {
+        return providerOptions;
     }
 
     /** The id of the pinned prompt version, or {@code null} for an embedding use case. */
@@ -149,9 +155,39 @@ public final class Resolution {
         return messages;
     }
 
+    /**
+     * Renders this chat use case's messages with the variables for one call.
+     *
+     * @throws PromptOnException when this is not a chat use case
+     * @throws TemplateException when a required variable is missing
+     */
+    public List<Message> messages(Map<String, Object> variables) {
+        if (kind != UseCaseKind.CHAT || messages == null) {
+            throw new PromptOnException(
+                    "use case " + key + " is of kind "
+                            + kind.wireName() + " and has no chat template");
+        }
+        return Template.renderMessages(messages, variables, engine);
+    }
+
     /** The raw text template, or {@code null} unless this is a text use case. */
     public String textTemplate() {
         return textTemplate;
+    }
+
+    /**
+     * Renders this text use case's prompt with the variables for one call.
+     *
+     * @throws PromptOnException when this is not a text use case
+     * @throws TemplateException when a required variable is missing
+     */
+    public String text(Map<String, Object> variables) {
+        if (kind != UseCaseKind.TEXT || textTemplate == null) {
+            throw new PromptOnException(
+                    "use case " + key + " is of kind "
+                            + kind.wireName() + " and has no text template");
+        }
+        return Template.render(textTemplate, variables, engine);
     }
 
     /** The use case's declared input variables. */
@@ -164,43 +200,68 @@ public final class Resolution {
         return payloadPolicy;
     }
 
-    /** Where the snapshot behind this resolution came from. */
-    public ResolutionSource source() {
+    /** Where the use-case document behind this use case came from. */
+    public Source source() {
         return source;
     }
 
-    /** The ETag of that snapshot, when there is one. */
+    /** The ETag of that use-case document, when there is one. */
     public String etag() {
         return etag;
     }
 
     /**
-     * Anything the snapshot referenced but did not contain. A healthy server never emits such a
-     * document; resolution still succeeds, with the corresponding fields {@code null}.
+     * Anything the use-case document referenced but did not contain. A healthy server never emits such a
+     * document; loading still succeeds, with the corresponding fields {@code null}.
      */
     public List<String> warnings() {
         return warnings;
     }
 
+    /**
+     * Times a provider call for this use case, queues a monitoring log, and returns the provider
+     * value.
+     *
+     * @throws Exception whatever the provider call threw
+     */
+    public <T> T track(TrackMeta meta, ProviderCall<T> supplier) throws Exception {
+        requireClient();
+        return client.track(this, meta, supplier);
+    }
+
+    /** {@link #track(TrackMeta, ProviderCall)} for a supplier that throws no checked exception. */
+    public <T> T trackUnchecked(TrackMeta meta, PromptOn.UncheckedProviderCall<T> supplier) {
+        requireClient();
+        return client.trackUnchecked(this, meta, supplier);
+    }
+
+    private void requireClient() {
+        if (client == null) {
+            throw new PromptOnException(
+                    "this use case is not attached to a PromptOn client; get it from PromptOn.useCase()");
+        }
+    }
+
     @Override
     public String toString() {
-        return "Resolution[" + useCase + " " + kind.wireName() + " prompt=" + prompt + " model="
+        return "UseCase[" + key + " " + kind.wireName() + " prompt=" + prompt + " model="
                 + model + " revision=" + deploymentRevision + " source=" + source.wireName() + "]";
     }
 
-    /** Assembles a {@link Resolution}. Used by {@link Resolver} and by the {@code /resolve} client. */
+    /** Assembles a {@link UseCase}. Used by {@link Resolver} and by the remote prompt client. */
     public static final class Builder {
-        private String useCase;
+        private PromptOn client;
+        private String key;
         private UseCaseKind kind = UseCaseKind.CHAT;
         private String deploymentId;
         private Integer deploymentRevision;
         private String prompt;
-        private List<String> availablePrompts = List.of();
+        private List<String> promptNames = List.of();
         private String model;
         private String modelId;
         private String provider;
-        private Map<String, Object> effectiveParams = Map.of();
-        private Map<String, Object> effectiveProviderOptions = Map.of();
+        private Map<String, Object> params = Map.of();
+        private Map<String, Object> providerOptions = Map.of();
         private String promptVersionId;
         private Integer promptVersionNumber;
         private Template.Engine engine = Template.Engine.LIQUID;
@@ -208,13 +269,45 @@ public final class Resolution {
         private String textTemplate;
         private List<Map<String, Object>> inputSchema = List.of();
         private PayloadPolicy payloadPolicy = PayloadPolicy.DEFAULT;
-        private ResolutionSource source = ResolutionSource.REMOTE;
+        private Source source = Source.REMOTE;
         private String etag;
         private List<String> warnings = List.of();
 
+        public Builder() {}
+
+        private Builder(UseCase source) {
+            this.client = source.client;
+            this.key = source.key;
+            this.kind = source.kind;
+            this.deploymentId = source.deploymentId;
+            this.deploymentRevision = source.deploymentRevision;
+            this.prompt = source.prompt;
+            this.promptNames = source.promptNames;
+            this.model = source.model;
+            this.modelId = source.modelId;
+            this.provider = source.provider;
+            this.params = source.params;
+            this.providerOptions = source.providerOptions;
+            this.promptVersionId = source.promptVersionId;
+            this.promptVersionNumber = source.promptVersionNumber;
+            this.engine = source.engine;
+            this.messages = source.messages;
+            this.textTemplate = source.textTemplate;
+            this.inputSchema = source.inputSchema;
+            this.payloadPolicy = source.payloadPolicy;
+            this.source = source.source;
+            this.etag = source.etag;
+            this.warnings = source.warnings;
+        }
+
+        Builder client(PromptOn value) {
+            this.client = value;
+            return this;
+        }
+
         /** @param value the use case key */
-        public Builder useCase(String value) {
-            this.useCase = value;
+        public Builder key(String value) {
+            this.key = value;
             return this;
         }
 
@@ -243,8 +336,8 @@ public final class Resolution {
         }
 
         /** @param value every prompt name the deployment pins */
-        public Builder availablePrompts(List<String> value) {
-            this.availablePrompts = value == null ? List.of() : value;
+        public Builder promptNames(List<String> value) {
+            this.promptNames = value == null ? List.of() : value;
             return this;
         }
 
@@ -267,14 +360,14 @@ public final class Resolution {
         }
 
         /** @param value the layered params */
-        public Builder effectiveParams(Map<String, Object> value) {
-            this.effectiveParams = value == null ? Map.of() : value;
+        public Builder params(Map<String, Object> value) {
+            this.params = value == null ? Map.of() : value;
             return this;
         }
 
         /** @param value the layered provider options */
-        public Builder effectiveProviderOptions(Map<String, Object> value) {
-            this.effectiveProviderOptions = value == null ? Map.of() : value;
+        public Builder providerOptions(Map<String, Object> value) {
+            this.providerOptions = value == null ? Map.of() : value;
             return this;
         }
 
@@ -320,27 +413,27 @@ public final class Resolution {
             return this;
         }
 
-        /** @param value where the snapshot came from */
-        public Builder source(ResolutionSource value) {
-            this.source = value == null ? ResolutionSource.MANUAL : value;
+        /** @param value where the use-case document came from */
+        public Builder source(Source value) {
+            this.source = value == null ? Source.MANUAL : value;
             return this;
         }
 
-        /** @param value the snapshot ETag */
+        /** @param value the use-case document ETag */
         public Builder etag(String value) {
             this.etag = value;
             return this;
         }
 
-        /** @param value decoding or resolution warnings */
+        /** @param value decoding or use-case loading warnings */
         public Builder warnings(List<String> value) {
             this.warnings = value == null ? List.of() : value;
             return this;
         }
 
-        /** Builds the resolution. */
-        public Resolution build() {
-            return new Resolution(this);
+        /** Builds the use case. */
+        public UseCase build() {
+            return new UseCase(this);
         }
     }
 }

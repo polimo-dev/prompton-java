@@ -4,14 +4,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The application-side context of one generation: what went in, and how to find it again later.
+ * The application-side context of one log: what went in, and how to find it again later.
  *
  * <p>Rendering is a pure function that keeps no state, so pass the same {@code variables} here if
  * you want them logged. {@code context} and {@code metadata} are free-form passthroughs — keep them
  * small (the server rejects a record whose {@code context} is over 2 KB or whose {@code metadata} is
  * over 4 KB) and keep secrets out of both.
  */
-public final class GenerationMeta {
+public final class TrackMeta {
 
     private final String id;
     private final Map<String, Object> variables;
@@ -24,7 +24,7 @@ public final class GenerationMeta {
     private final Map<String, Object> metadata;
     private final Map<String, Object> params;
 
-    private GenerationMeta(Builder b) {
+    private TrackMeta(Builder b) {
         this.id = b.id;
         this.variables = b.variables;
         this.inputMessages = b.inputMessages;
@@ -43,7 +43,7 @@ public final class GenerationMeta {
     }
 
     /** Meta with nothing set. */
-    public static GenerationMeta empty() {
+    public static TrackMeta empty() {
         return builder().build();
     }
 
@@ -92,12 +92,12 @@ public final class GenerationMeta {
         return metadata;
     }
 
-    /** The params actually sent, when they differ from the resolution's. */
+    /** The params actually sent, when they differ from the use case's. */
     public Map<String, Object> params() {
         return params;
     }
 
-    /** Assembles a {@link GenerationMeta}. */
+    /** Assembles a {@link TrackMeta}. */
     public static final class Builder {
         private String id;
         private Map<String, Object> variables;
@@ -173,8 +173,8 @@ public final class GenerationMeta {
         }
 
         /** Builds the meta. */
-        public GenerationMeta build() {
-            return new GenerationMeta(this);
+        public TrackMeta build() {
+            return new TrackMeta(this);
         }
     }
 }

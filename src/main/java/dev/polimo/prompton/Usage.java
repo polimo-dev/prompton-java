@@ -12,7 +12,7 @@ import java.util.Map;
  * @param costSource {@code provider}, {@code catalog} or {@code unknown}
  * @param raw the provider's own usage object, kept for auditing; the server blanks it over 16 KB
  */
-public record GenerationUsage(
+public record Usage(
         Integer inputTokens,
         Integer outputTokens,
         Double costUsd,
@@ -20,8 +20,8 @@ public record GenerationUsage(
         Map<String, Object> raw) {
 
     /** Token counts only. */
-    public static GenerationUsage ofTokens(Integer inputTokens, Integer outputTokens) {
-        return new GenerationUsage(inputTokens, outputTokens, null, "unknown", null);
+    public static Usage ofTokens(Integer inputTokens, Integer outputTokens) {
+        return new Usage(inputTokens, outputTokens, null, "unknown", null);
     }
 
     /** The wire form. Nested nulls are sent as {@code null} and accepted. */

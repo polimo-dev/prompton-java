@@ -9,17 +9,17 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * A parsed {@code GET /snapshot} document — everything live in one environment.
+ * A parsed {@code GET /use-cases} document — everything live in one environment.
  *
- * <p>The SDK reads schema version 3 only. A deployment revision is a <em>pin</em>, not a router:
- * one model plus one pinned prompt version per prompt name. An older schema is refused
- * ({@link #parse} throws) so the SDK keeps polling for a document it understands; a newer one is
- * read for the fields it knows and recorded in {@link #warnings()}.
+ * <p>The SDK reads schema version 4 only. The {@code schema_version} field must be the JSON
+ * integer {@code 4}; missing, non-integral, and non-4 version values are refused ({@link #parse}
+ * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
+ * version per prompt name.
  */
-public final class Snapshot {
+public final class UseCaseDocument {
 
     /** The schema version this SDK reads. */
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
 
     /**
      * One use case: what shape of call it is and what its logs may carry.
@@ -108,7 +108,7 @@ public final class Snapshot {
     private final Map<String, Model> models;
     private final List<String> warnings;
 
-    private Snapshot(
+    private UseCaseDocument(
             int schemaVersion,
             String project,
             String environment,
@@ -127,35 +127,20 @@ public final class Snapshot {
         this.warnings = List.copyOf(warnings);
     }
 
-    /** Parses a snapshot JSON document. */
-    public static Snapshot parse(String json) {
+    /** Parses a use-case document JSON body. */
+    public static UseCaseDocument parse(String json) {
         return fromMap(Json.parseObject(json));
     }
 
-    /** Builds a snapshot from an already-decoded document. */
+    /** Builds a use-case document from an already-decoded body. */
     @SuppressWarnings("unchecked")
-    public static Snapshot fromMap(Map<String, Object> doc) {
+    public static UseCaseDocument fromMap(Map<String, Object> doc) {
         List<String> warnings = new ArrayList<>();
-        Integer version = Json.intAt(doc, "schema_version", null);
-        if (version == null) {
-            version = Json.intAt(doc, "version", null);
-        }
-        if (version == null) {
-            if (!(doc.get("deployments") instanceof Map)) {
-                throw new PromptOnException("snapshot is missing schema_version");
-            }
-            version = SCHEMA_VERSION;
-        } else if (version < SCHEMA_VERSION) {
-            throw new PromptOnException(
-                    "unsupported snapshot schema_version " + version + "; this SDK reads version "
-                            + SCHEMA_VERSION);
-        } else if (version > SCHEMA_VERSION) {
-            warnings.add("unknown_schema_version: " + version);
-        }
+        int version = readSchemaVersion(doc);
 
         Map<String, Object> rawUseCases = Json.mapAt(doc, "use_cases");
         if (rawUseCases == null) {
-            throw new PromptOnException("snapshot is missing use_cases");
+            throw new PromptOnException("use-case document is missing use_cases");
         }
 
         Map<String, UseCase> useCases = new LinkedHashMap<>();
@@ -205,7 +190,7 @@ public final class Snapshot {
             });
         }
 
-        return new Snapshot(
+        return new UseCaseDocument(
                 version,
                 Json.stringAt(doc, "project"),
                 Json.stringAt(doc, "environment"),
@@ -214,6 +199,29 @@ public final class Snapshot {
                 promptVersions,
                 models,
                 warnings);
+    }
+
+    private static int readSchemaVersion(Map<String, Object> doc) {
+        Object raw = doc.get("schema_version");
+        if (raw == null) {
+            throw new PromptOnException("use-case document is missing schema_version");
+        }
+        if (!(raw instanceof Byte
+                || raw instanceof Short
+                || raw instanceof Integer
+                || raw instanceof Long)) {
+            throw new PromptOnException(
+                    "use-case document schema_version must be the JSON integer "
+                            + SCHEMA_VERSION);
+        }
+        long version = ((Number) raw).longValue();
+        if (version != SCHEMA_VERSION) {
+            throw new PromptOnException(
+                    "unsupported use-case document schema_version " + version
+                            + "; this SDK reads version "
+                            + SCHEMA_VERSION);
+        }
+        return (int) version;
     }
 
     /** {@code Map.copyOf} rejects null values, and an explicit null is a meaningful override. */
@@ -360,7 +368,7 @@ public final class Snapshot {
     /** The sorted prompt names the live deployment of {@code useCaseKey} pins. */
     public List<String> promptNames(String useCaseKey) {
         if (!useCases.containsKey(useCaseKey)) {
-            throw ResolutionException.of(ResolutionException.Reason.UNKNOWN_USE_CASE, useCaseKey);
+            throw UseCaseException.of(UseCaseException.Reason.UNKNOWN_USE_CASE, useCaseKey);
         }
         Deployment deployment = deployments.get(useCaseKey);
         return deployment == null ? List.of() : List.copyOf(deployment.promptPins().keySet());

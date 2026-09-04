@@ -3,7 +3,7 @@ package dev.polimo.prompton;
 /**
  * What your provider call returned, told apart into success and failure so the SDK can log it.
  *
- * <p>{@link #error(Object, GenerationError, GenerationOutcome)} keeps the usage and the output on a
+ * <p>{@link #error(Object, LogError, Result)} keeps the usage and the output on a
  * failure, which is what you want when the call succeeded but the answer failed to parse: the
  * tokens were still spent, and the text is the evidence.
  *
@@ -12,18 +12,18 @@ package dev.polimo.prompton;
 public final class ProviderResult<T> {
 
     private final T value;
-    private final GenerationOutcome outcome;
-    private final GenerationError error;
+    private final Result result;
+    private final LogError error;
 
-    private ProviderResult(T value, GenerationOutcome outcome, GenerationError error) {
+    private ProviderResult(T value, Result result, LogError error) {
         this.value = value;
-        this.outcome = outcome;
+        this.result = result;
         this.error = error;
     }
 
     /** A success carrying what the provider produced. */
-    public static <T> ProviderResult<T> ok(T value, GenerationOutcome outcome) {
-        return new ProviderResult<>(value, outcome, null);
+    public static <T> ProviderResult<T> ok(T value, Result result) {
+        return new ProviderResult<>(value, result, null);
     }
 
     /** A success with nothing to record beyond the fact that it worked. */
@@ -32,14 +32,14 @@ public final class ProviderResult<T> {
     }
 
     /** A failure. */
-    public static <T> ProviderResult<T> error(T value, GenerationError error) {
+    public static <T> ProviderResult<T> error(T value, LogError error) {
         return new ProviderResult<>(value, null, error);
     }
 
     /** A failure that still has usage and output worth keeping — a parse failure, typically. */
     public static <T> ProviderResult<T> error(
-            T value, GenerationError error, GenerationOutcome outcome) {
-        return new ProviderResult<>(value, outcome, error);
+            T value, LogError error, Result result) {
+        return new ProviderResult<>(value, result, error);
     }
 
     /** What your code gets back from the wrapper. */
@@ -48,12 +48,12 @@ public final class ProviderResult<T> {
     }
 
     /** What the provider produced, when there is anything. */
-    public GenerationOutcome outcome() {
-        return outcome;
+    public Result result() {
+        return result;
     }
 
     /** The failure, or {@code null} on success. */
-    public GenerationError error() {
+    public LogError error() {
         return error;
     }
 

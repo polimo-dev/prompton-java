@@ -1,7 +1,7 @@
 package dev.polimo.prompton;
 
-/** What one snapshot refresh did. */
-public enum RefreshOutcome {
+/** What one use-case document refresh did. */
+public enum RefreshResult {
     /** A new document was fetched and installed. */
     UPDATED,
     /** PromptOn confirmed the ETag: the document in memory is current. */

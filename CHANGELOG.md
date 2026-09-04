@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.0
+
+Breaking vocabulary rename release. The SDK now matches the public schema-v4 use-case document,
+monitoring-log and server-filled prompt vocabulary without compatibility aliases.
+
+### Changed
+
+- Renamed the public local-loading API from resolution vocabulary to use-case vocabulary:
+  `resolve` / `resolveRemote` / `Resolution` / `ResolutionException` / `ResolutionSource` are now
+  `useCase` / `useCaseRemote` / `UseCase` / `UseCaseException` / `Source`.
+- Renamed the public use-case accessors from `useCase()` and `availablePrompts()` to `key()` and
+  `promptNames()`.
+- Renamed high-level rendering entrypoints to methods on `UseCase`: `messages(variables)` and
+  `text(variables)`.
+- Renamed generation logging vocabulary to monitoring-log result vocabulary:
+  `GenerationRecord` / `GenerationMeta` / `GenerationOutcome` / `GenerationUsage` /
+  `GenerationError` are now `LogRecord` / `TrackMeta` / `Result` / `Usage` / `LogError`, and
+  `withGeneration` is now `track`.
+- Renamed snapshot public document lifecycle vocabulary:
+  `Snapshot` / `SnapshotInfo` / `snapshotInfo` / `exportSnapshot` / `putSnapshot` / `snapshot` are
+  now `UseCaseDocument` / `UseCaseDocumentInfo` / `useCaseDocumentInfo` /
+  `exportUseCaseDocument` / `putUseCaseDocument` / `useCaseDocument`.
+- Renamed `RefreshOutcome` to `RefreshResult`.
+- Updated the server-filled prompt route docs and client errors to `POST /use-cases/{key}/prompt`;
+  unknown-prompt errors and conformance fixtures now use `prompt_names`.
+- Updated the bundled file name examples to `use-cases.<environment>.json`.
+
 ## 0.1.0
 
 Initial release. The PromptOn SDK for Java 17+, reading snapshot schema version 3.

@@ -1,15 +1,15 @@
 package dev.polimo.prompton;
 
-/** Snapshot documents the unit tests resolve against. */
+/** Use-case documents the unit tests read against. */
 final class Fixtures {
 
     private Fixtures() {}
 
-    /** A production snapshot with a chat, a text and an embedding use case. */
-    static String snapshot(String environment, String project, String greetingSystemPrompt) {
+    /** A production use-case document with a chat, a text and an embedding use case. */
+    static String useCaseDocument(String environment, String project, String greetingSystemPrompt) {
         return """
             {
-              "schema_version": 3,
+              "schema_version": 4,
               "project": "__PROJECT__",
               "environment": "__ENVIRONMENT__",
               "use_cases": {
@@ -132,18 +132,18 @@ final class Fixtures {
             .replace("__GREETING__", greetingSystemPrompt);
     }
 
-    /** The production snapshot with the default greeting. */
+    /** The production use-case document with the default greeting. */
     static String production() {
-        return snapshot("production", "sdkfixture", "You are a friendly greeter.");
+        return useCaseDocument("production", "sdkfixture", "You are a friendly greeter.");
     }
 
-    /** The production snapshot with a different greeting, so a refresh is observable. */
+    /** The production use-case document with a different greeting, so a refresh is observable. */
     static String productionV2() {
-        return snapshot("production", "sdkfixture", "You are a very friendly greeter.");
+        return useCaseDocument("production", "sdkfixture", "You are a very friendly greeter.");
     }
 
     /** The same document, but for staging. */
     static String staging() {
-        return snapshot("staging", "sdkfixture", "You are a greeter (staging build).");
+        return useCaseDocument("staging", "sdkfixture", "You are a greeter (staging build).");
     }
 }

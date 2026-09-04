@@ -202,7 +202,7 @@ final class LogBuffer implements AutoCloseable {
         }
     }
 
-    /** Snapshot of the queue and its counters. */
+    /** UseCaseDocument of the queue and its counters. */
     LogStats stats() {
         synchronized (lock) {
             return new LogStats(remaining(), queuedBytes, sent.get(), droppedFull.get(),
@@ -336,7 +336,7 @@ final class LogBuffer implements AutoCloseable {
             records.add(queued.record());
         }
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("generations", records);
+        body.put("logs", records);
 
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("accept", "application/json");
@@ -344,7 +344,7 @@ final class LogBuffer implements AutoCloseable {
         headers.put("user-agent", config.userAgent());
         headers.put("authorization", "Bearer " + config.apiKey());
         String environment = batch.environment == null ? config.environment() : batch.environment;
-        String url = config.baseUrl() + "/generations?environment="
+        String url = config.baseUrl() + "/logs?environment="
                 + URLEncoder.encode(environment, StandardCharsets.UTF_8);
 
         HttpResponse response;

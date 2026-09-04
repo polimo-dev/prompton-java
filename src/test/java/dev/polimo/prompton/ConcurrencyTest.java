@@ -42,10 +42,10 @@ class ConcurrencyTest {
     @Test
     void manyThreadsResolveRenderAndLogAgainstOneClient() throws Exception {
         server.handle(request -> {
-            if (request.path().endsWith("/snapshot")) {
+            if (request.path().endsWith("/use-cases")) {
                 return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
             }
-            int count = Json.listAt(Json.parseObject(request.body()), "generations").size();
+            int count = Json.listAt(Json.parseObject(request.body()), "logs").size();
             return StubServer.Reply.of(202,
                     "{\"accepted\":" + count + ",\"duplicates\":0,\"rejected\":[]}");
         });
@@ -67,19 +67,19 @@ class ConcurrencyTest {
                 .cacheTtl(Duration.ofMillis(20))
                 .logFlushInterval(Duration.ofMillis(20))
                 .build())) {
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             for (int t = 0; t < threads; t++) {
                 pool.execute(() -> {
                     try {
                         start.await();
                         for (int i = 0; i < perThread; i++) {
-                            Resolution pin = prompton.resolve("greeting", i % 2 == 0 ? null : "ko");
+                            UseCase pin = prompton.useCase("greeting", i % 2 == 0 ? null : "ko");
                             List<Message> messages =
-                                    prompton.renderMessages(pin, Map.of("name", "Ada"));
+                                    pin.messages(Map.of("name", "Ada"));
                             assertEquals(2, messages.size());
-                            prompton.log(GenerationRecord.builder()
-                                    .resolution(pin)
-                                    .status(GenerationRecord.Status.OK)
+                            prompton.log(LogRecord.builder()
+                                    .useCase(pin)
+                                    .status(LogRecord.Status.OK)
                                     .startedAt(Instant.now())
                                     .latencyMs(1L)
                                     .build());
@@ -119,12 +119,12 @@ class ConcurrencyTest {
                 .project("sdkfixture").diskCacheEnabled(false)
                 .pollingEnabled(false).cacheTtl(Duration.ofMillis(10))
                 .requestTimeout(Duration.ofSeconds(5)).build())) {
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             Thread.sleep(30);
 
             long startedAt = System.nanoTime();
             for (int i = 0; i < 200; i++) {
-                assertNotNull(prompton.resolve("greeting").model());
+                assertNotNull(prompton.useCase("greeting").model());
             }
             long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
             assertTrue(elapsedMillis < 300,
@@ -162,7 +162,7 @@ class ConcurrencyTest {
                         for (int i = 0; i < 100; i++) {
                             DiskCache.Stored stored = DiskCache.read(path);
                             if (stored != null) {
-                                assertEquals("production", Snapshot.parse(stored.body()).environment());
+                                assertEquals("production", UseCaseDocument.parse(stored.body()).environment());
                                 reads.incrementAndGet();
                             }
                         }

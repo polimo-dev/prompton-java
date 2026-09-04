@@ -45,12 +45,12 @@ public final class Template {
             this.wireName = wireName;
         }
 
-        /** The value stored in the snapshot. */
+        /** The value stored in the use-case document. */
         public String wireName() {
             return wireName;
         }
 
-        /** Parses a snapshot value; anything but {@code raw} is {@link #LIQUID}. */
+        /** Parses a use-case document value; anything but {@code raw} is {@link #LIQUID}. */
         public static Engine from(String value) {
             return value != null && value.trim().equalsIgnoreCase("raw") ? RAW : LIQUID;
         }
@@ -96,15 +96,15 @@ public final class Template {
     private Template() {}
 
     // ---------------------------------------------------------------------
-    // public API
+    // package implementation API
 
     /** Renders {@code source} with the Liquid engine. */
-    public static String render(String source, Map<String, Object> variables) {
+    static String render(String source, Map<String, Object> variables) {
         return render(source, variables, Engine.LIQUID);
     }
 
     /** Renders {@code source}; {@link Engine#RAW} returns it verbatim. */
-    public static String render(String source, Map<String, Object> variables, Engine engine) {
+    static String render(String source, Map<String, Object> variables, Engine engine) {
         if (source == null) {
             return "";
         }
@@ -119,7 +119,7 @@ public final class Template {
     }
 
     /** Renders the {@code content} of every message, keeping the other fields as they are. */
-    public static List<Message> renderMessages(
+    static List<Message> renderMessages(
             List<Message> messages, Map<String, Object> variables, Engine engine) {
         List<Message> rendered = new ArrayList<>(messages.size());
         for (Message message : messages) {
@@ -132,7 +132,7 @@ public final class Template {
      * Checks a template against the allowed subset. An empty list means it is fine.
      *
      * <p>The server runs the same check when a prompt version is committed, so a template that
-     * fails lint can never reach a snapshot.
+     * fails lint can never reach a use-case document.
      */
     public static List<LintIssue> lint(String source) {
         List<LintIssue> issues = new ArrayList<>();

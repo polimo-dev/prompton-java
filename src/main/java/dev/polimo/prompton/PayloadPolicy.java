@@ -4,7 +4,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * How much of a call's text a monitoring log may carry, as the snapshot declares it per use case.
+ * How much of a call's text a monitoring log may carry, as the use-case document declares it per use case.
  *
  * @param mode {@link Mode#FULL} truncates, {@link Mode#HASH} sends digests, {@link Mode#NONE} drops
  *     input and output entirely
@@ -35,7 +35,7 @@ public record PayloadPolicy(Mode mode, double sampleRate, int maxBytes) {
         }
     }
 
-    /** Reads a {@code payload_policy} object out of a snapshot. {@code null} gives the default. */
+    /** Reads a {@code payload_policy} object out of a use-case document. {@code null} gives the default. */
     public static PayloadPolicy fromMap(Map<String, Object> map) {
         if (map == null) {
             return DEFAULT;

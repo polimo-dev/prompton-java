@@ -44,7 +44,7 @@ class PromptOnConfigTest {
         assertEquals(10_000, config.logMaxBuffer());
         assertEquals(Mode.LIVE, config.mode());
         assertEquals(PayloadPolicy.DEFAULT, config.payloadDefaults());
-        assertEquals("prompton-java/0.1.0", config.userAgent());
+        assertEquals("prompton-java/0.2.0", config.userAgent());
         if (System.getenv("PTN_HOST") == null) {
             assertEquals("https://app.prompton.ai/api/v1", config.baseUrl());
         }
@@ -73,7 +73,7 @@ class PromptOnConfigTest {
                 .environment("staging")
                 .build();
         Path path = config.diskCachePath();
-        assertTrue(path.toString().endsWith("snapshot-heydiary-staging.json"), path.toString());
+        assertTrue(path.toString().endsWith("use-cases-heydiary-staging.json"), path.toString());
         assertTrue(path.getParent().toString().endsWith("prompton"), path.toString());
     }
 
@@ -97,9 +97,9 @@ class PromptOnConfigTest {
         assertEquals("http://two.example/api/v1", staging.baseUrl());
         assertEquals("production", production.environment());
         assertEquals("staging", staging.environment());
-        assertTrue(production.diskCachePath().toString().endsWith("snapshot-alpha-production.json"),
+        assertTrue(production.diskCachePath().toString().endsWith("use-cases-alpha-production.json"),
                 String.valueOf(production.diskCachePath()));
-        assertTrue(staging.diskCachePath().toString().endsWith("snapshot-alpha-staging.json"),
+        assertTrue(staging.diskCachePath().toString().endsWith("use-cases-alpha-staging.json"),
                 String.valueOf(staging.diskCachePath()));
         assertNotSame(production.httpClient(), staging.httpClient(),
                 "two configurations must not share one HTTP client with confused ownership");

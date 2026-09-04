@@ -87,33 +87,33 @@ class LiveFixtureIT {
 
     @Test
     void snapshotFetchAndThenA304OnRepoll() throws Exception {
-        HttpResponse first = get(BASE + "/snapshot?environment=production", Map.of());
+        HttpResponse first = get(BASE + "/use-cases?environment=production", Map.of());
         assertEquals(200, first.status());
         String etag = first.header("etag");
         assertNotNull(etag, "the snapshot must carry an ETag to poll with");
 
-        Snapshot snapshot = Snapshot.parse(first.body());
-        assertEquals(3, snapshot.schemaVersion());
+        UseCaseDocument snapshot = UseCaseDocument.parse(first.body());
+        assertEquals(UseCaseDocument.SCHEMA_VERSION, snapshot.schemaVersion());
         assertEquals("production", snapshot.environment());
         assertEquals(List.of(), snapshot.warnings());
         assertTrue(snapshot.useCases().keySet().containsAll(List.of("greeting", "summarize", "embed")));
 
-        HttpResponse repoll = get(BASE + "/snapshot?environment=production",
+        HttpResponse repoll = get(BASE + "/use-cases?environment=production",
                 Map.of("if-none-match", etag));
         assertEquals(304, repoll.status(), "an unchanged snapshot answers 304 with no body");
         assertTrue(repoll.body() == null || repoll.body().isEmpty());
     }
 
     @Test
-    void localResolutionMatchesTheServerForTheDefaultPrompt() throws Exception {
+    void localUseCaseMatchesTheServerForTheDefaultPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            Resolution local = client.resolve("greeting");
-            List<Message> rendered = client.renderMessages(local, Map.of("name", "Ada"));
+            UseCase local = client.useCase("greeting");
+            List<Message> rendered = local.messages(Map.of("name", "Ada"));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/resolve",
-                    "{\"use_case\":\"greeting\",\"variables\":{\"name\":\"Ada\"}}").body());
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/greeting/prompt",
+                    "{\"variables\":{\"name\":\"Ada\"}}").body());
 
-            assertResolutionMatches(local, remote);
+            assertUseCaseMatches(local, remote);
             assertEquals(Json.canonical(Json.listAt(remote, "messages")),
                     Json.canonical(asMaps(rendered)),
                     "local rendering must produce exactly what the server produces");
@@ -121,16 +121,16 @@ class LiveFixtureIT {
     }
 
     @Test
-    void localResolutionMatchesTheServerForANamedPrompt() throws Exception {
+    void localUseCaseMatchesTheServerForANamedPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            Resolution local = client.resolve("greeting", "ko");
-            List<Message> rendered = client.renderMessages(local, Map.of("name", "Ada"));
+            UseCase local = client.useCase("greeting", "ko");
+            List<Message> rendered = local.messages(Map.of("name", "Ada"));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/resolve",
-                    "{\"use_case\":\"greeting\",\"prompt\":\"ko\",\"variables\":{\"name\":\"Ada\"}}")
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/greeting/prompt",
+                    "{\"prompt\":\"ko\",\"variables\":{\"name\":\"Ada\"}}")
                     .body());
 
-            assertResolutionMatches(local, remote);
+            assertUseCaseMatches(local, remote);
             assertEquals("ko", local.prompt());
             assertEquals(Json.canonical(Json.listAt(remote, "messages")),
                     Json.canonical(asMaps(rendered)));
@@ -138,16 +138,16 @@ class LiveFixtureIT {
     }
 
     @Test
-    void localResolutionMatchesTheServerForATextUseCase() throws Exception {
+    void localUseCaseMatchesTheServerForATextUseCase() throws Exception {
         try (PromptOn client = prompton("production")) {
-            Resolution local = client.resolve("summarize");
-            String rendered = client.renderText(local, Map.of("items", List.of("alpha", "beta")));
+            UseCase local = client.useCase("summarize");
+            String rendered = local.text(Map.of("items", List.of("alpha", "beta")));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/resolve",
-                    "{\"use_case\":\"summarize\",\"variables\":{\"items\":[\"alpha\",\"beta\"]}}")
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/summarize/prompt",
+                    "{\"variables\":{\"items\":[\"alpha\",\"beta\"]}}")
                     .body());
 
-            assertResolutionMatches(local, remote);
+            assertUseCaseMatches(local, remote);
             assertEquals(UseCaseKind.TEXT, local.kind());
             assertEquals(Json.stringAt(remote, "text"), rendered);
         }
@@ -156,92 +156,92 @@ class LiveFixtureIT {
     @Test
     void anEmbeddingUseCaseResolvesToAModelAndNoPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            Resolution local = client.resolve("embed");
+            UseCase local = client.useCase("embed");
             Map<String, Object> remote =
-                    Json.parseObject(post(BASE + "/resolve", "{\"use_case\":\"embed\"}").body());
+                    Json.parseObject(post(BASE + "/use-cases/embed/prompt", "{}").body());
 
-            assertResolutionMatches(local, remote);
+            assertUseCaseMatches(local, remote);
             assertEquals(UseCaseKind.EMBEDDING, local.kind());
             assertEquals(null, local.prompt());
             assertEquals(null, local.promptVersionId());
-            assertEquals(List.of(), local.availablePrompts());
+            assertEquals(List.of(), local.promptNames());
         }
     }
 
     @Test
     void aStagingSnapshotResolvesIndependentlyOfProduction() throws Exception {
-        HttpResponse staging = get(BASE + "/snapshot?environment=staging", Map.of());
+        HttpResponse staging = get(BASE + "/use-cases?environment=staging", Map.of());
         assertEquals(200, staging.status());
-        assertEquals("staging", Snapshot.parse(staging.body()).environment());
+        assertEquals("staging", UseCaseDocument.parse(staging.body()).environment());
 
         try (PromptOn client = prompton("staging")) {
-            Resolution pin = client.resolve("greeting");
+            UseCase pin = client.useCase("greeting");
             assertNotNull(pin.model());
-            assertEquals("staging", client.snapshotInfo().environment());
-            assertEquals(ResolutionSource.REMOTE, pin.source());
+            assertEquals("staging", client.useCaseDocumentInfo().environment());
+            assertEquals(Source.REMOTE, pin.source());
         }
     }
 
     @Test
     void theErrorCasesComeBackAsTheContractDescribes() throws Exception {
-        assertEquals(404, get(BASE + "/snapshot?environment=nope", Map.of()).status());
+        assertEquals(404, get(BASE + "/use-cases?environment=nope", Map.of()).status());
 
-        HttpResponse unknownUseCase = post(BASE + "/resolve", "{\"use_case\":\"nope\"}");
+        HttpResponse unknownUseCase = post(BASE + "/use-cases/nope/prompt", "{}");
         assertEquals(404, unknownUseCase.status());
         assertEquals("not_found", errorCode(unknownUseCase));
 
-        HttpResponse unknownPrompt = post(BASE + "/resolve",
-                "{\"use_case\":\"greeting\",\"prompt\":\"fr\",\"variables\":{\"name\":\"Ada\"}}");
+        HttpResponse unknownPrompt = post(BASE + "/use-cases/greeting/prompt",
+                "{\"prompt\":\"fr\",\"variables\":{\"name\":\"Ada\"}}");
         assertEquals(404, unknownPrompt.status());
         assertEquals("unknown_prompt", errorDetail(unknownPrompt, "reason"));
 
-        HttpResponse missingVariable = post(BASE + "/resolve",
-                "{\"use_case\":\"greeting\",\"variables\":{}}");
+        HttpResponse missingVariable = post(BASE + "/use-cases/greeting/prompt",
+                "{\"variables\":{}}");
         assertEquals(400, missingVariable.status());
         assertEquals("name", errorDetail(missingVariable, "missing_variable"));
 
-        HttpResponse missingUseCase = post(BASE + "/resolve", "{}");
-        assertEquals(400, missingUseCase.status());
+        HttpResponse missingUseCasePath = post(BASE + "/use-cases/%20/prompt", "{}");
+        assertEquals(404, missingUseCasePath.status());
 
         Map<String, String> wrongKey = new LinkedHashMap<>();
         wrongKey.put("accept", "application/json");
         wrongKey.put("authorization", "Bearer ptn_sdkfixture_wrong");
         assertEquals(401, http.send(new HttpRequest("GET",
-                BASE + "/snapshot?environment=production", wrongKey, null, Duration.ofSeconds(10)))
+                BASE + "/use-cases?environment=production", wrongKey, null, Duration.ofSeconds(10)))
                 .status());
     }
 
     @Test
     void theSdkRaisesTheSameErrorsLocallyThatTheServerReturns() {
         try (PromptOn client = prompton("production")) {
-            assertEquals(ResolutionException.Reason.UNKNOWN_USE_CASE,
-                    assertThrows(ResolutionException.class, () -> client.resolve("nope")).reason());
+            assertEquals(UseCaseException.Reason.UNKNOWN_USE_CASE,
+                    assertThrows(UseCaseException.class, () -> client.useCase("nope")).reason());
 
-            ResolutionException unknownPrompt = assertThrows(ResolutionException.class,
-                    () -> client.resolve("greeting", "fr"));
-            assertEquals(ResolutionException.Reason.UNKNOWN_PROMPT, unknownPrompt.reason());
-            assertEquals(List.of("default", "ko"), unknownPrompt.availablePrompts());
+            UseCaseException unknownPrompt = assertThrows(UseCaseException.class,
+                    () -> client.useCase("greeting", "fr"));
+            assertEquals(UseCaseException.Reason.UNKNOWN_PROMPT, unknownPrompt.reason());
+            assertEquals(List.of("default", "ko"), unknownPrompt.promptNames());
 
-            Resolution pin = client.resolve("greeting");
+            UseCase pin = client.useCase("greeting");
             TemplateException missing = assertThrows(TemplateException.class,
-                    () -> client.renderMessages(pin, Map.of()));
+                    () -> pin.messages(Map.of()));
             assertEquals("name", missing.variable());
         }
     }
 
     @Test
-    void aGenerationsBatchIsAcceptedAndThenCountedAsDuplicatesOnResend() throws Exception {
-        String batch = Json.write(Map.of("generations", List.of(
+    void aLogsBatchIsAcceptedAndThenCountedAsDuplicatesOnResend() throws Exception {
+        String batch = Json.write(Map.of("logs", List.of(
                 liveRecord("greeting", "default"), liveRecord("greeting", "ko"))));
 
-        HttpResponse first = post(BASE + "/generations?environment=production", batch);
+        HttpResponse first = post(BASE + "/logs?environment=production", batch);
         assertEquals(202, first.status());
         Map<String, Object> accepted = Json.parseObject(first.body());
         assertEquals(2, Json.intAt(accepted, "accepted", -1));
         assertEquals(0, Json.intAt(accepted, "duplicates", -1));
         assertEquals(List.of(), Json.listAt(accepted, "rejected"));
 
-        HttpResponse resend = post(BASE + "/generations?environment=production", batch);
+        HttpResponse resend = post(BASE + "/logs?environment=production", batch);
         assertEquals(202, resend.status());
         Map<String, Object> again = Json.parseObject(resend.body());
         assertEquals(0, Json.intAt(again, "accepted", -1));
@@ -252,19 +252,19 @@ class LiveFixtureIT {
     @Test
     void theSdkSendsAMonitoringLogEndToEnd() throws Exception {
         try (PromptOn client = prompton("production")) {
-            Resolution pin = client.resolve("greeting");
-            List<Message> messages = client.renderMessages(pin, Map.of("name", "Ada"));
+            UseCase pin = client.useCase("greeting");
+            List<Message> messages = pin.messages(Map.of("name", "Ada"));
 
-            String answer = client.withGeneration(pin, GenerationMeta.builder()
+            String answer = pin.track(TrackMeta.builder()
                             .inputMessages(messages)
                             .variables(Map.of("name", "Ada"))
                             .traceId("java-sdk-live-test")
                             .endUserRef("user-42")
                             .build(),
-                    () -> ProviderResult.ok("Hello, Ada!", GenerationOutcome.builder()
+                    () -> ProviderResult.ok("Hello, Ada!", Result.builder()
                             .content("Hello, Ada!")
                             .finishReason("stop")
-                            .usage(new GenerationUsage(38, 6, 0.000012, "provider", null))
+                            .usage(new Usage(38, 6, 0.000012, "provider", null))
                             .build()));
 
             assertEquals("Hello, Ada!", answer);
@@ -281,15 +281,15 @@ class LiveFixtureIT {
         try (PromptOn client = PromptOn.create(PromptOnConfig.builder()
                 .apiKey(KEY).host(HOST).environment("production")
                 .diskCachePath(cache).pollingEnabled(false).build())) {
-            assertEquals(ResolutionSource.REMOTE, client.resolve("greeting").source());
+            assertEquals(Source.REMOTE, client.useCase("greeting").source());
         }
         try (PromptOn offline = PromptOn.create(PromptOnConfig.builder()
                 .apiKey(KEY).host("http://127.0.0.1:1").environment("production")
                 .diskCachePath(cache).pollingEnabled(false)
                 .initialFetchTimeout(Duration.ofMillis(500))
                 .requestTimeout(Duration.ofMillis(300)).build())) {
-            Resolution pin = offline.resolve("greeting");
-            assertEquals(ResolutionSource.DISK, pin.source());
+            UseCase pin = offline.useCase("greeting");
+            assertEquals(Source.DISK, pin.source());
             assertFalse(pin.model().isBlank());
         }
     }
@@ -302,32 +302,32 @@ class LiveFixtureIT {
         record.put("model", "openai/gpt-4o-mini");
         record.put("prompt", prompt);
         record.put("provider", "openrouter");
-        record.put("resolution_source", "remote");
+        record.put("source", "remote");
         record.put("status", "ok");
         record.put("started_at", Instant.now().toString());
         record.put("finish_reason", "stop");
         record.put("stop_kind", "stop");
         record.put("latency_ms", 842);
         record.put("trace_id", "java-sdk-live-test");
-        record.put("sdk", Map.of("name", "prompton-java", "version", "0.1.0"));
+        record.put("sdk", Map.of("name", "prompton-java", "version", "0.2.0"));
         return record;
     }
 
-    private static void assertResolutionMatches(Resolution local, Map<String, Object> remote) {
+    private static void assertUseCaseMatches(UseCase local, Map<String, Object> remote) {
         Map<String, Object> deployment = Json.mapAt(remote, "deployment");
-        assertEquals(Json.stringAt(remote, "use_case"), local.useCase());
+        assertEquals(Json.stringAt(remote, "key"), local.key());
         assertEquals(Json.stringAt(remote, "kind"), local.kind().wireName());
         assertEquals(Json.stringAt(deployment, "id"), local.deploymentId());
         assertEquals(Json.intAt(deployment, "revision", null), local.deploymentRevision());
         assertEquals(Json.stringAt(remote, "prompt"), local.prompt());
-        assertEquals(Json.listAt(remote, "prompts"), local.availablePrompts());
+        assertEquals(Json.listAt(remote, "prompt_names"), local.promptNames());
         assertEquals(Json.stringAt(remote, "model"), local.model());
         assertEquals(Json.stringAt(remote, "model_id"), local.modelId());
         assertEquals(Json.stringAt(remote, "provider"), local.provider());
-        assertEquals(Json.canonical(Json.mapAt(remote, "effective_params")),
-                Json.canonical(local.effectiveParams()));
-        assertEquals(Json.canonical(Json.mapAt(remote, "effective_provider_options")),
-                Json.canonical(local.effectiveProviderOptions()));
+        assertEquals(Json.canonical(Json.mapAt(remote, "params")),
+                Json.canonical(local.params()));
+        assertEquals(Json.canonical(Json.mapAt(remote, "provider_options")),
+                Json.canonical(local.providerOptions()));
         Map<String, Object> version = Json.mapAt(remote, "prompt_version");
         assertEquals(version == null ? null : Json.stringAt(version, "id"), local.promptVersionId());
         assertEquals(version == null ? null : Json.intAt(version, "number", null),

@@ -48,7 +48,7 @@ public final class Payload {
 
     private static final int SAMPLE_SCALE = 10_000;
 
-    /** The SDK-side settings the policy needs beyond the snapshot's own. */
+    /** The SDK-side settings the policy needs beyond the use-case document's own. */
     public record Options(boolean hashEndUser, UnaryOperator<Map<String, Object>> redact) {
 
         /** No end-user hashing and no redact hook. */
@@ -59,10 +59,10 @@ public final class Payload {
 
     /** Applies {@code policy} to a monitoring log record and returns the record to send. */
     public static Map<String, Object> apply(
-            Map<String, Object> generation, PayloadPolicy policy, Options options) {
+            Map<String, Object> log, PayloadPolicy policy, Options options) {
         PayloadPolicy effective = policy == null ? PayloadPolicy.DEFAULT : policy;
         Options opts = options == null ? Options.DEFAULT : options;
-        Map<String, Object> gen = Json.copyMap(generation);
+        Map<String, Object> gen = Json.copyMap(log);
 
         applyMode(gen, effective);
         capErrorMessage(gen);
@@ -469,7 +469,7 @@ public final class Payload {
     // ---------------------------------------------------------------------
     // UTF-8-safe head/tail truncation
 
-    /** The outcome of one truncation step. */
+    /** The result of one truncation step. */
     private record Result<T>(T value, boolean truncated) {}
 
     /**

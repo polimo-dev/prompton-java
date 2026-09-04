@@ -2,7 +2,7 @@ package dev.polimo.prompton;
 
 import java.util.Locale;
 
-/** How a failed generation failed, as PromptOn classifies it. */
+/** How a failed log failed, as PromptOn classifies it. */
 public enum ErrorKind {
     /** The provider answered 4xx (other than a rate limit). */
     HTTP_4XX("http_4xx"),

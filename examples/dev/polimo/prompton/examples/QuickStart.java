@@ -1,20 +1,20 @@
 package dev.polimo.prompton.examples;
 
 import dev.polimo.prompton.FlushResult;
-import dev.polimo.prompton.GenerationMeta;
-import dev.polimo.prompton.GenerationOutcome;
-import dev.polimo.prompton.GenerationUsage;
+import dev.polimo.prompton.TrackMeta;
+import dev.polimo.prompton.Result;
+import dev.polimo.prompton.Usage;
 import dev.polimo.prompton.Message;
 import dev.polimo.prompton.Mode;
 import dev.polimo.prompton.PromptOn;
 import dev.polimo.prompton.PromptOnConfig;
 import dev.polimo.prompton.ProviderResult;
-import dev.polimo.prompton.Resolution;
+import dev.polimo.prompton.UseCase;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Resolve a pin, render its prompt, "call a provider", and log the generation.
+ * Load a use case, render its prompt, "call a provider", and log the call.
  *
  * <p>Run it against the local fixture server:
  *
@@ -22,7 +22,7 @@ import java.util.Map;
  * PTN_HOST=http://localhost:4000 PTN_API_KEY=ptn_sdkfixture_... ./gradlew example
  * </pre>
  *
- * <p>With no {@code PTN_API_KEY} it runs in test mode against a snapshot built into this file, so
+ * <p>With no {@code PTN_API_KEY} it runs in test mode against a use-case document built into this file, so
  * it works with no server at all — which is also how you would test your own call sites.
  */
 public final class QuickStart {
@@ -45,29 +45,30 @@ public final class QuickStart {
 
         try (PromptOn prompton = PromptOn.create(config)) {
             if (!live) {
-                System.out.println("No PTN_API_KEY: running in test mode on a built-in snapshot.\n");
-                prompton.putSnapshot(BUILT_IN_SNAPSHOT);
+                System.out.println("No PTN_API_KEY: running in test mode on a built-in use-case document.\n");
+                prompton.putUseCaseDocument(BUILT_IN_SNAPSHOT);
             }
 
             // 1. Resolve: which prompt version, which model, which params.
-            Resolution pin = prompton.resolve("greeting");
-            System.out.println("use case   : " + pin.useCase() + " (" + pin.kind().wireName() + ")");
-            System.out.println("deployment : revision " + pin.deploymentRevision()
-                    + " from " + pin.source().wireName());
-            System.out.println("model      : " + pin.model() + " via " + pin.provider());
-            System.out.println("params     : " + pin.effectiveParams());
-            System.out.println("prompts    : " + pin.availablePrompts());
+            UseCase useCase = prompton.useCase("greeting");
+            System.out.println("use case   : " + useCase.key() + " ("
+                    + useCase.kind().wireName() + ")");
+            System.out.println("deployment : revision " + useCase.deploymentRevision()
+                    + " from " + useCase.source().wireName());
+            System.out.println("model      : " + useCase.model() + " via " + useCase.provider());
+            System.out.println("params     : " + useCase.params());
+            System.out.println("prompts    : " + useCase.promptNames());
 
             // 2. Render this call's variables into the pinned prompt.
             Map<String, Object> variables = Map.of("name", "Ada");
-            List<Message> messages = prompton.renderMessages(pin, variables);
+            List<Message> messages = useCase.messages(variables);
             System.out.println("\nrendered messages:");
             messages.forEach(message ->
                     System.out.println("  [" + message.role() + "] " + message.content()));
 
             // 3. Call the provider yourself, with your own key and HTTP client, inside the wrapper
             //    that times it and logs the result.
-            String answer = prompton.withGeneration(pin, GenerationMeta.builder()
+            String answer = useCase.track(TrackMeta.builder()
                             .inputMessages(messages)
                             .variables(variables)
                             .endUserRef("user-42")
@@ -75,12 +76,12 @@ public final class QuickStart {
                             .context(Map.of("language", "en"))
                             .build(),
                     () -> {
-                        FakeProviderReply reply = callYourProvider(pin.model(), messages);
-                        return ProviderResult.ok(reply.text(), GenerationOutcome.builder()
+                        FakeProviderReply reply = callYourProvider(useCase.model(), messages);
+                        return ProviderResult.ok(reply.text(), Result.builder()
                                 .content(reply.text())
                                 .finishReason(reply.finishReason())
-                                .modelUsed(pin.model())
-                                .usage(new GenerationUsage(
+                                .modelUsed(useCase.model())
+                                .usage(new Usage(
                                         reply.inputTokens(), reply.outputTokens(),
                                         null, "unknown", null))
                                 .build());
@@ -110,7 +111,7 @@ public final class QuickStart {
 
     private static final String BUILT_IN_SNAPSHOT = """
         {
-          "schema_version": 3,
+          "schema_version": 4,
           "project": "example",
           "environment": "production",
           "use_cases": {

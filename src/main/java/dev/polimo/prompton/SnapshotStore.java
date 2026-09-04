@@ -25,9 +25,9 @@ import java.util.logging.Logger;
  * The three tiers of configuration, in the order they are consulted: memory, the disk cache, the
  * bundled file — and behind them PromptOn itself.
  *
- * <p>Every resolve reads memory, so within the cache TTL no call touches the network. Once the TTL
- * has passed a refresh runs in the background: {@code GET /snapshot} with {@code If-None-Match},
- * where a {@code 304} means there is nothing to parse. A refresh never blocks a generation and never
+ * <p>Every use-case lookup reads memory, so within the cache TTL no call touches the network. Once the TTL
+ * has passed a refresh runs in the background: {@code GET /use-cases} with {@code If-None-Match},
+ * where a {@code 304} means there is nothing to parse. A refresh never blocks a provider call and never
  * fails one — while it is in flight, and if it fails, the previous document keeps serving. A
  * {@code 429} is honoured to the second from {@code Retry-After}; a 5xx, a timeout or a transport
  * failure backs off by doubling from the TTL up to five minutes. Only when no tier has a document at
@@ -42,10 +42,10 @@ final class SnapshotStore implements AutoCloseable {
 
     /** One loaded document and where it came from. */
     record Entry(
-            Snapshot snapshot,
+            UseCaseDocument useCaseDocument,
             String etag,
             String lastModified,
-            ResolutionSource source,
+            Source source,
             Instant fetchedAt,
             Instant staleSince,
             String rawJson) {}
@@ -86,10 +86,10 @@ final class SnapshotStore implements AutoCloseable {
         }
         synchronized (scheduleLock) {
             refresher = Executors.newSingleThreadScheduledExecutor(
-                    runnable -> daemon(runnable, "prompton-snapshot-refresh"));
+                    runnable -> daemon(runnable, "prompton-use-cases-refresh"));
             if (config.pollingEnabled()) {
                 poller = Executors.newSingleThreadScheduledExecutor(
-                        runnable -> daemon(runnable, "prompton-snapshot-poll"));
+                        runnable -> daemon(runnable, "prompton-use-cases-poll"));
                 poller.scheduleWithFixedDelay(
                         this::pollTick, 0, Math.max(1, config.cacheTtl().toMillis()),
                         TimeUnit.MILLISECONDS);
@@ -120,7 +120,7 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /**
-     * The document to resolve against, waiting for the first fetch when memory, disk and bundle are
+     * The document to load use cases from, waiting for the first fetch when memory, disk and bundle are
      * all empty. Never blocks once anything has been loaded.
      */
     Entry require() {
@@ -133,14 +133,14 @@ final class SnapshotStore implements AutoCloseable {
             entry = awaitFirstDocument();
         }
         if (entry == null) {
-            throw ResolutionException.of(ResolutionException.Reason.NOT_READY, null);
+            throw UseCaseException.of(UseCaseException.Reason.NOT_READY, null);
         }
         return entry;
     }
 
     /**
      * Starts an attempt when one is due and waits for it, so a process that came up while PromptOn
-     * was down recovers on a later resolve instead of failing for the rest of its life. Waits only
+     * was down recovers on a later lookup instead of failing for the rest of its life. Waits only
      * while an attempt is actually running: during a rate-limit pause or a backoff it returns at
      * once, because nothing is going to change until the pause has elapsed.
      */
@@ -234,12 +234,12 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /** Fetches once, now. Returns what happened; never throws for a server or network failure. */
-    RefreshOutcome refresh() {
+    RefreshResult refresh() {
         if (!config.remoteEnabled()) {
-            return RefreshOutcome.SKIPPED;
+            return RefreshResult.SKIPPED;
         }
         if (!refreshing.compareAndSet(false, true)) {
-            return RefreshOutcome.SKIPPED;
+            return RefreshResult.SKIPPED;
         }
         try {
             return fetch();
@@ -252,7 +252,7 @@ final class SnapshotStore implements AutoCloseable {
         }
     }
 
-    private RefreshOutcome fetch() {
+    private RefreshResult fetch() {
         Entry previous = current.get();
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("accept", "application/json");
@@ -261,7 +261,7 @@ final class SnapshotStore implements AutoCloseable {
         if (previous != null && previous.etag() != null) {
             headers.put("if-none-match", previous.etag());
         }
-        String url = config.baseUrl() + "/snapshot?environment="
+        String url = config.baseUrl() + "/use-cases?environment="
                 + URLEncoder.encode(config.environment(), StandardCharsets.UTF_8);
 
         HttpResponse response;
@@ -278,16 +278,16 @@ final class SnapshotStore implements AutoCloseable {
             failures = 0;
             nextAttemptAt = Instant.now().plus(config.cacheTtl());
             if (previous != null
-                    && (previous.source() != ResolutionSource.REMOTE || previous.staleSince() != null)) {
-                current.set(new Entry(previous.snapshot(), previous.etag(), previous.lastModified(),
-                        ResolutionSource.REMOTE, previous.fetchedAt(), null, previous.rawJson()));
+                    && (previous.source() != Source.REMOTE || previous.staleSince() != null)) {
+                current.set(new Entry(previous.useCaseDocument(), previous.etag(), previous.lastModified(),
+                        Source.REMOTE, previous.fetchedAt(), null, previous.rawJson()));
             }
-            return RefreshOutcome.NOT_MODIFIED;
+            return RefreshResult.NOT_MODIFIED;
         }
         if (status == 200) {
-            Snapshot snapshot;
+            UseCaseDocument snapshot;
             try {
-                snapshot = Snapshot.parse(response.body());
+                snapshot = UseCaseDocument.parse(response.body());
             } catch (RuntimeException e) {
                 return failed("undecodable snapshot: " + e.getMessage(), null);
             }
@@ -299,7 +299,7 @@ final class SnapshotStore implements AutoCloseable {
                     snapshot,
                     response.header("etag"),
                     response.header("last-modified"),
-                    ResolutionSource.REMOTE,
+                    Source.REMOTE,
                     Instant.now(),
                     null,
                     response.body());
@@ -308,7 +308,7 @@ final class SnapshotStore implements AutoCloseable {
             nextAttemptAt = Instant.now().plus(config.cacheTtl());
             persist(entry);
             LOG.log(Level.FINE, () -> "[PromptOn] snapshot updated, etag=" + entry.etag());
-            return RefreshOutcome.UPDATED;
+            return RefreshResult.UPDATED;
         }
         if (status == 429) {
             return failed("rate limited", Backoff.retryAfterFrom(response));
@@ -324,7 +324,7 @@ final class SnapshotStore implements AutoCloseable {
         return body.length() <= 200 ? body : body.substring(0, 200) + "…";
     }
 
-    private RefreshOutcome failed(String reason, Duration retryAfter) {
+    private RefreshResult failed(String reason, Duration retryAfter) {
         failures++;
         Duration wait = retryAfter != null
                 ? retryAfter
@@ -332,17 +332,17 @@ final class SnapshotStore implements AutoCloseable {
         nextAttemptAt = Instant.now().plus(wait);
         Entry previous = current.get();
         if (previous != null && previous.staleSince() == null) {
-            current.set(new Entry(previous.snapshot(), previous.etag(), previous.lastModified(),
+            current.set(new Entry(previous.useCaseDocument(), previous.etag(), previous.lastModified(),
                     previous.source(), previous.fetchedAt(), Instant.now(), previous.rawJson()));
         }
         int attempt = failures;
         LOG.log(Level.WARNING, () -> "[PromptOn] snapshot refresh failed (attempt " + attempt + "): "
                 + reason + "; serving the cached document, next attempt in " + wait.toSeconds() + "s");
-        return RefreshOutcome.FAILED;
+        return RefreshResult.FAILED;
     }
 
     /** Installs a document the application supplied. */
-    void put(Snapshot snapshot, ResolutionSource source, String rawJson) {
+    void put(UseCaseDocument snapshot, Source source, String rawJson) {
         current.set(new Entry(snapshot, null, null, source, Instant.now(), null, rawJson));
         synchronized (arrival) {
             arrival.notifyAll();
@@ -363,20 +363,20 @@ final class SnapshotStore implements AutoCloseable {
     // local tiers
 
     private void loadLocal() {
-        if (loadFile(config.diskCachePath(), ResolutionSource.DISK)) {
+        if (loadFile(config.diskCachePath(), Source.DISK)) {
             return;
         }
-        loadFile(config.bundlePath(), ResolutionSource.BUNDLE);
+        loadFile(config.bundlePath(), Source.BUNDLE);
     }
 
-    private boolean loadFile(Path path, ResolutionSource source) {
+    private boolean loadFile(Path path, Source source) {
         DiskCache.Stored stored = DiskCache.read(path);
         if (stored == null) {
             return false;
         }
-        Snapshot snapshot;
+        UseCaseDocument snapshot;
         try {
-            snapshot = Snapshot.parse(stored.body());
+            snapshot = UseCaseDocument.parse(stored.body());
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, () -> "[PromptOn] ignoring the " + source.wireName()
                     + " snapshot at " + path + ": " + e.getMessage());
@@ -412,7 +412,7 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /** Why this document must not be used here, or {@code null} when it may. */
-    private String mismatch(Snapshot snapshot) {
+    private String mismatch(UseCaseDocument snapshot) {
         String environment = snapshot.environment();
         if (environment != null && !environment.equals(config.environment())) {
             return "it describes environment \"" + environment + "\", not \"" + config.environment()
@@ -433,8 +433,8 @@ final class SnapshotStore implements AutoCloseable {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("etag", entry.etag());
         meta.put("last_modified", entry.lastModified());
-        meta.put("environment", entry.snapshot().environment());
-        meta.put("project", entry.snapshot().project());
+        meta.put("environment", entry.useCaseDocument().environment());
+        meta.put("project", entry.useCaseDocument().project());
         meta.put("fetched_at", entry.fetchedAt().toString());
         if (!DiskCache.write(path, entry.rawJson(), meta)) {
             LOG.warning("[PromptOn] could not write the disk cache at " + path);
@@ -445,39 +445,40 @@ final class SnapshotStore implements AutoCloseable {
     void exportTo(Path path) {
         Entry entry = current.get();
         if (entry == null) {
-            throw new PromptOnException("there is no snapshot in memory to export");
+            throw new PromptOnException("there is no use-case document in memory to export");
         }
         String body = entry.rawJson();
         if (body == null) {
-            throw new PromptOnException("the snapshot in memory has no original document to export");
+            throw new PromptOnException(
+                    "the use-case document in memory has no original document to export");
         }
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("etag", entry.etag());
         meta.put("last_modified", entry.lastModified());
-        meta.put("environment", entry.snapshot().environment());
-        meta.put("project", entry.snapshot().project());
+        meta.put("environment", entry.useCaseDocument().environment());
+        meta.put("project", entry.useCaseDocument().project());
         meta.put("exported_at", Instant.now().toString());
         if (!DiskCache.write(path, body, meta)) {
-            throw new PromptOnException("could not write the snapshot bundle to " + path);
+            throw new PromptOnException("could not write the use-case document bundle to " + path);
         }
     }
 
     /** What a health endpoint should report. */
-    SnapshotInfo info() {
+    UseCaseDocumentInfo info() {
         Entry entry = current.get();
         if (entry == null) {
-            return SnapshotInfo.NONE;
+            return UseCaseDocumentInfo.NONE;
         }
         long age = Math.max(0, Duration.between(entry.fetchedAt(), Instant.now()).toSeconds());
-        return new SnapshotInfo(
+        return new UseCaseDocumentInfo(
                 entry.source(),
                 entry.etag(),
                 entry.lastModified(),
                 entry.fetchedAt(),
-                entry.source() != ResolutionSource.REMOTE || entry.staleSince() != null,
+                entry.source() != Source.REMOTE || entry.staleSince() != null,
                 age,
-                entry.snapshot().project(),
-                entry.snapshot().environment());
+                entry.useCaseDocument().project(),
+                entry.useCaseDocument().environment());
     }
 
     @Override

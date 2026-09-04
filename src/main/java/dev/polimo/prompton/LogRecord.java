@@ -10,17 +10,17 @@ import java.util.Map;
  * One monitoring log: what your app asked for, what came back, and how long it took.
  *
  * <p>{@code use_case}, {@code model}, {@code status} and {@code started_at} are required;
- * {@link PromptOn#log(GenerationRecord)} fills in {@code id} (a UUIDv7, the idempotency key),
- * {@code sdk} and — when a {@link Resolution} is attached — {@code deployment_id},
+ * {@link PromptOn#log(LogRecord)} fills in {@code id} (a UUIDv7, the idempotency key),
+ * {@code sdk} and — when a {@link UseCase} is attached — {@code deployment_id},
  * {@code deployment_revision}, {@code prompt}, {@code prompt_version_id}, {@code model_id},
- * {@code provider}, {@code kind}, {@code params} and {@code resolution_source}.
+ * {@code provider}, {@code kind}, {@code params} and {@code source}.
  *
  * <p>Keep secrets out of {@code input}, {@code output}, {@code context} and {@code metadata}: no
  * provider keys, no {@code PTN_API_KEY}, no user PII beyond {@code end_user_ref}.
  */
-public final class GenerationRecord {
+public final class LogRecord {
 
-    /** Whether the generation worked. */
+    /** Whether the log worked. */
     public enum Status {
         /** The provider answered and the application accepted the answer. */
         OK("ok"),
@@ -45,7 +45,7 @@ public final class GenerationRecord {
     private final String environment;
     private final PayloadPolicy payloadPolicy;
 
-    private GenerationRecord(Map<String, Object> fields, String environment, PayloadPolicy policy) {
+    private LogRecord(Map<String, Object> fields, String environment, PayloadPolicy policy) {
         this.fields = fields;
         this.environment = environment;
         this.payloadPolicy = policy;
@@ -57,8 +57,8 @@ public final class GenerationRecord {
     }
 
     /** Wraps an already-assembled record map, for an application that builds its own. */
-    public static GenerationRecord fromMap(Map<String, Object> map) {
-        return new GenerationRecord(new LinkedHashMap<>(map), null, null);
+    public static LogRecord fromMap(Map<String, Object> map) {
+        return new LogRecord(new LinkedHashMap<>(map), null, null);
     }
 
     /** The record's id, or {@code null} when the SDK still has to issue one. */
@@ -68,7 +68,7 @@ public final class GenerationRecord {
     }
 
     /** The use case key. */
-    public String useCase() {
+    public String key() {
         Object useCase = fields.get("use_case");
         return useCase == null ? null : String.valueOf(useCase);
     }
@@ -78,7 +78,7 @@ public final class GenerationRecord {
         return environment;
     }
 
-    /** The payload policy to apply, or {@code null} to take the use case's from the snapshot. */
+    /** The payload policy to apply, or {@code null} to take the use case's from the use-case document. */
     public PayloadPolicy payloadPolicy() {
         return payloadPolicy;
     }
@@ -109,7 +109,7 @@ public final class GenerationRecord {
         }
     }
 
-    /** Assembles a {@link GenerationRecord}. */
+    /** Assembles a {@link LogRecord}. */
     public static final class Builder {
         private final Map<String, Object> fields = new LinkedHashMap<>();
         private String environment;
@@ -124,7 +124,7 @@ public final class GenerationRecord {
         }
 
         /** @param value the use case key */
-        public Builder useCase(String value) {
+        public Builder key(String value) {
             fields.put("use_case", value);
             return this;
         }
@@ -153,7 +153,7 @@ public final class GenerationRecord {
             return this;
         }
 
-        /** @param value whether the generation worked */
+        /** @param value whether the log worked */
         public Builder status(Status value) {
             fields.put("status", value == null ? null : value.wireName());
             return this;
@@ -184,13 +184,13 @@ public final class GenerationRecord {
         }
 
         /** @param value the failure, on a record whose status is {@link Status#ERROR} */
-        public Builder error(GenerationError value) {
+        public Builder error(LogError value) {
             fields.put("error", value == null ? null : value.toMap());
             return this;
         }
 
         /** @param value tokens and cost */
-        public Builder usage(GenerationUsage value) {
+        public Builder usage(Usage value) {
             fields.put("usage", value == null ? null : value.toMap());
             return this;
         }
@@ -244,8 +244,8 @@ public final class GenerationRecord {
         }
 
         /** @param value where the configuration behind this call came from */
-        public Builder resolutionSource(ResolutionSource value) {
-            fields.put("resolution_source", value == null ? null : value.wireName());
+        public Builder source(Source value) {
+            fields.put("source", value == null ? null : value.wireName());
             return this;
         }
 
@@ -291,38 +291,40 @@ public final class GenerationRecord {
             return this;
         }
 
-        /** @param value any field the contract adds that this SDK does not model yet
-         *  @param key the field name */
+        /**
+         * @param key the field name
+         * @param value any field the contract adds that this SDK does not model yet
+         */
         public Builder field(String key, Object value) {
             fields.put(key, value);
             return this;
         }
 
         /**
-         * Copies the resolution evidence out of a {@link Resolution}: the deployment, the prompt,
-         * the model and provider, the kind, the effective params, and where the snapshot came from.
+         * Copies the use-case evidence out of a {@link UseCase}: the deployment, the prompt, the
+         * model and provider, the kind, the params, and where the use-case document came from.
          *
-         * @param resolution the pin this call used
+         * @param useCase the use case this call used
          * @return this builder
          */
-        public Builder resolution(Resolution resolution) {
-            if (resolution == null) {
+        public Builder useCase(UseCase useCase) {
+            if (useCase == null) {
                 return this;
             }
-            useCase(resolution.useCase());
-            kind(resolution.kind());
-            deploymentId(resolution.deploymentId());
-            deploymentRevision(resolution.deploymentRevision());
-            prompt(resolution.prompt());
-            promptVersionId(resolution.promptVersionId());
-            model(resolution.model());
-            modelId(resolution.modelId());
-            provider(resolution.provider());
-            resolutionSource(resolution.source());
+            key(useCase.key());
+            kind(useCase.kind());
+            deploymentId(useCase.deploymentId());
+            deploymentRevision(useCase.deploymentRevision());
+            prompt(useCase.prompt());
+            promptVersionId(useCase.promptVersionId());
+            model(useCase.model());
+            modelId(useCase.modelId());
+            provider(useCase.provider());
+            source(useCase.source());
             if (!fields.containsKey("params")) {
-                params(resolution.effectiveParams());
+                params(useCase.params());
             }
-            this.payloadPolicy = resolution.payloadPolicy();
+            this.payloadPolicy = useCase.payloadPolicy();
             return this;
         }
 
@@ -339,8 +341,8 @@ public final class GenerationRecord {
         }
 
         /** Builds the record. */
-        public GenerationRecord build() {
-            return new GenerationRecord(new LinkedHashMap<>(fields), environment, payloadPolicy);
+        public LogRecord build() {
+            return new LogRecord(new LinkedHashMap<>(fields), environment, payloadPolicy);
         }
     }
 }

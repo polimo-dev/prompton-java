@@ -8,8 +8,8 @@ import java.util.TreeMap;
  * Shallow-merge helper for the two parameter maps the resolver layers.
  *
  * <pre>
- * effective_params           = use_case.default_params &lt;- deployment.params
- * effective_provider_options = model.provider_options   &lt;- deployment.provider_options
+ * params           = use_case.default_params &lt;- deployment.params
+ * provider_options = model.provider_options   &lt;- deployment.provider_options
  * </pre>
  *
  * <p>The merge is shallow — a nested map on the right replaces the left side whole — and an

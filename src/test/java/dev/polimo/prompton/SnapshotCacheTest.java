@@ -60,9 +60,9 @@ class SnapshotCacheTest {
                 .withHeader("etag", "\"sha256-v1\""));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMinutes(10)).build())) {
             for (int i = 0; i < 25; i++) {
-                assertEquals("openai/gpt-4o-mini", prompton.resolve("greeting").model());
+                assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
             }
-            assertEquals(1, server.requests("/snapshot").size(),
+            assertEquals(1, server.requests("/use-cases").size(),
                     "one fetch on start, and nothing else within the TTL");
         }
     }
@@ -78,12 +78,12 @@ class SnapshotCacheTest {
             return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"sha256-v1\"");
         });
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(50)).build())) {
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             Thread.sleep(120);
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             waitUntil(() -> notModified.get() >= 1);
             assertTrue(notModified.get() >= 1, "the refresh sent the ETag back");
-            assertEquals(ResolutionSource.REMOTE, prompton.snapshotInfo().source());
+            assertEquals(Source.REMOTE, prompton.useCaseDocumentInfo().source());
         }
     }
 
@@ -99,12 +99,12 @@ class SnapshotCacheTest {
         });
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(20)).build())) {
             assertEquals("You are a friendly greeter.",
-                    prompton.resolve("greeting").messages().get(0).content());
+                    prompton.useCase("greeting").messages().get(0).content());
             body.set(Fixtures.productionV2());
             etag.set("\"sha256-v2\"");
-            assertEquals(RefreshOutcome.UPDATED, prompton.refresh());
+            assertEquals(RefreshResult.UPDATED, prompton.refresh());
             assertEquals("You are a very friendly greeter.",
-                    prompton.resolve("greeting").messages().get(0).content());
+                    prompton.useCase("greeting").messages().get(0).content());
         }
     }
 
@@ -120,17 +120,17 @@ class SnapshotCacheTest {
                     .withHeader("retry-after", "30");
         });
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(10)).build())) {
-            prompton.resolve("greeting");
-            assertEquals(RefreshOutcome.FAILED, prompton.refresh());
+            prompton.useCase("greeting");
+            assertEquals(RefreshResult.FAILED, prompton.refresh());
             int after429 = calls.get();
             for (int i = 0; i < 10; i++) {
-                assertEquals("openai/gpt-4o-mini", prompton.resolve("greeting").model());
+                assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
                 Thread.sleep(5);
             }
             Thread.sleep(60);
             assertEquals(after429, calls.get(),
                     "no request is made before Retry-After has elapsed");
-            assertTrue(prompton.snapshotInfo().stale(), "the document is flagged stale");
+            assertTrue(prompton.useCaseDocumentInfo().stale(), "the document is flagged stale");
         }
     }
 
@@ -139,8 +139,8 @@ class SnapshotCacheTest {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production())
                 .withHeader("etag", "\"v1\""));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(200)).build())) {
-            prompton.resolve("greeting");
-            assertEquals(1, server.requests("/snapshot").size());
+            prompton.useCase("greeting");
+            assertEquals(1, server.requests("/use-cases").size());
             Thread.sleep(250);
 
             int threads = 32;
@@ -153,7 +153,7 @@ class SnapshotCacheTest {
                         try {
                             start.await();
                             for (int i = 0; i < 100; i++) {
-                                prompton.resolve("greeting");
+                                prompton.useCase("greeting");
                             }
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
@@ -168,7 +168,7 @@ class SnapshotCacheTest {
                 pool.shutdownNow();
             }
             Thread.sleep(50);
-            assertEquals(2, server.requests("/snapshot").size(),
+            assertEquals(2, server.requests("/use-cases").size(),
                     "3200 resolves on one expired TTL are one refresh, not one fetch per caller");
         }
     }
@@ -181,9 +181,9 @@ class SnapshotCacheTest {
                 : StubServer.Reply.of(429, "{\"error\":{\"code\":\"rate_limited\"}}")
                         .withHeader("retry-after", "120"));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(20)).build())) {
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             Thread.sleep(40);
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
             waitUntil(() -> calls.get() >= 2);
             assertEquals(2, calls.get(), "the refresh after the TTL was the one that got the 429");
 
@@ -198,7 +198,7 @@ class SnapshotCacheTest {
                             start.await();
                             for (int i = 0; i < 100; i++) {
                                 assertEquals("openai/gpt-4o-mini",
-                                        prompton.resolve("greeting").model());
+                                        prompton.useCase("greeting").model());
                             }
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
@@ -229,18 +229,18 @@ class SnapshotCacheTest {
                 .cacheTtl(Duration.ofMillis(20))
                 .initialFetchTimeout(Duration.ofMillis(500))
                 .build())) {
-            ResolutionException e = assertThrows(
-                    ResolutionException.class, () -> prompton.resolve("greeting"));
-            assertEquals(ResolutionException.Reason.NOT_READY, e.reason());
+            UseCaseException e = assertThrows(
+                    UseCaseException.class, () -> prompton.useCase("greeting"));
+            assertEquals(UseCaseException.Reason.NOT_READY, e.reason());
 
             server = new StubServer(port);
             server.handle(request -> StubServer.Reply.ok(Fixtures.production())
                     .withHeader("etag", "\"v1\""));
             Thread.sleep(60);
 
-            assertEquals("openai/gpt-4o-mini", prompton.resolve("greeting").model(),
+            assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model(),
                     "a cold start during an outage must recover, not fail for the process's life");
-            assertEquals(ResolutionSource.REMOTE, prompton.snapshotInfo().source());
+            assertEquals(Source.REMOTE, prompton.useCaseDocumentInfo().source());
         }
     }
 
@@ -251,10 +251,10 @@ class SnapshotCacheTest {
                 ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
                 : StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}"));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(10)).build())) {
-            prompton.resolve("greeting");
-            assertEquals(RefreshOutcome.FAILED, prompton.refresh());
-            assertEquals("openai/gpt-4o-mini", prompton.resolve("greeting").model());
-            assertTrue(prompton.snapshotInfo().stale());
+            prompton.useCase("greeting");
+            assertEquals(RefreshResult.FAILED, prompton.refresh());
+            assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
+            assertTrue(prompton.useCaseDocumentInfo().stale());
         }
     }
 
@@ -279,7 +279,7 @@ class SnapshotCacheTest {
                 .withHeader("last-modified", "Fri, 04 Sep 2026 00:21:48 GMT"));
         Path cache = tempDir.resolve("snapshot.json");
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
-            prompton.resolve("greeting");
+            prompton.useCase("greeting");
         }
         assertTrue(Files.exists(cache));
         Map<String, Object> meta = readJson(DiskCache.metaPath(cache));
@@ -299,16 +299,16 @@ class SnapshotCacheTest {
 
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache)
                 .initialFetchTimeout(Duration.ofMillis(300)).build())) {
-            Resolution pin = prompton.resolve("greeting");
-            assertEquals(ResolutionSource.DISK, pin.source());
+            UseCase pin = prompton.useCase("greeting");
+            assertEquals(Source.DISK, pin.source());
             assertEquals("openai/gpt-4o-mini", pin.model());
-            assertTrue(prompton.snapshotInfo().stale());
+            assertTrue(prompton.useCaseDocumentInfo().stale());
         }
     }
 
     @Test
     void withNoDiskCacheItResolvesFromTheBundle() {
-        Path bundle = tempDir.resolve("bundle").resolve("snapshot.production.json");
+        Path bundle = tempDir.resolve("bundle").resolve("use-cases.production.json");
         assertTrue(DiskCache.write(bundle, Fixtures.production(),
                 Map.of("environment", "production", "project", "sdkfixture")));
         server.close();
@@ -318,7 +318,7 @@ class SnapshotCacheTest {
                 .bundlePath(bundle)
                 .initialFetchTimeout(Duration.ofMillis(300))
                 .build())) {
-            assertEquals(ResolutionSource.BUNDLE, prompton.resolve("greeting").source());
+            assertEquals(Source.BUNDLE, prompton.useCase("greeting").source());
         }
     }
 
@@ -334,9 +334,9 @@ class SnapshotCacheTest {
                 .environment("production")
                 .initialFetchTimeout(Duration.ofMillis(200))
                 .build())) {
-            ResolutionException e = assertThrows(
-                    ResolutionException.class, () -> prompton.resolve("greeting"));
-            assertEquals(ResolutionException.Reason.NOT_READY, e.reason());
+            UseCaseException e = assertThrows(
+                    UseCaseException.class, () -> prompton.useCase("greeting"));
+            assertEquals(UseCaseException.Reason.NOT_READY, e.reason());
             assertTrue(e.getMessage().contains("unreachable"));
         }
     }
@@ -345,7 +345,7 @@ class SnapshotCacheTest {
     void aDocumentForAnotherProjectIsNeverUsed() {
         Path bundle = tempDir.resolve("other.json");
         assertTrue(DiskCache.write(bundle,
-                Fixtures.snapshot("production", "someone-else", "hi"), Map.of()));
+                Fixtures.useCaseDocument("production", "someone-else", "hi"), Map.of()));
         server.close();
 
         try (PromptOn prompton = PromptOn.create(config()
@@ -354,7 +354,7 @@ class SnapshotCacheTest {
                 .project("sdkfixture")
                 .initialFetchTimeout(Duration.ofMillis(200))
                 .build())) {
-            assertThrows(ResolutionException.class, () -> prompton.resolve("greeting"));
+            assertThrows(UseCaseException.class, () -> prompton.useCase("greeting"));
         }
     }
 
@@ -365,36 +365,63 @@ class SnapshotCacheTest {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\""));
 
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
-            assertEquals(ResolutionSource.REMOTE, prompton.resolve("greeting").source());
+            assertEquals(Source.REMOTE, prompton.useCase("greeting").source());
         }
     }
 
     @Test
-    void anOlderSchemaVersionIsRefused() {
+    void aMissingSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                Snapshot.parse("{\"schema_version\": 2, \"use_cases\": {}}"));
-        assertTrue(e.getMessage().contains("schema_version 2"));
+                UseCaseDocument.parse("{\"use_cases\": {}, \"deployments\": {}}"));
+        assertTrue(e.getMessage().contains("missing schema_version"));
     }
 
     @Test
-    void aNewerSchemaVersionIsReadWithAWarning() {
-        Snapshot snapshot = Snapshot.parse(
-                "{\"schema_version\": 4, \"project\": \"p\", \"environment\": \"production\","
-                        + " \"use_cases\": {}, \"deployments\": {}}");
-        assertEquals(List.of("unknown_schema_version: 4"), snapshot.warnings());
+    void aLegacyVersionOnlyDocumentIsRefused() {
+        PromptOnException e = assertThrows(PromptOnException.class, () ->
+                UseCaseDocument.parse("{\"version\": 4, \"use_cases\": {}, \"deployments\": {}}"));
+        assertTrue(e.getMessage().contains("missing schema_version"));
     }
 
     @Test
-    void withNothingCachedAndPromptOnDownResolutionFailsWithAClearError() {
+    void aStringSchemaVersionIsRefused() {
+        PromptOnException e = assertThrows(PromptOnException.class, () ->
+                UseCaseDocument.parse("{\"schema_version\": \"4\", \"use_cases\": {}}"));
+        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 4"));
+    }
+
+    @Test
+    void aFractionalSchemaVersionIsRefused() {
+        PromptOnException e = assertThrows(PromptOnException.class, () ->
+                UseCaseDocument.parse("{\"schema_version\": 4.0, \"use_cases\": {}}"));
+        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 4"));
+    }
+
+    @Test
+    void schemaVersionThreeIsRefused() {
+        PromptOnException e = assertThrows(PromptOnException.class, () ->
+                UseCaseDocument.parse("{\"schema_version\": 3, \"use_cases\": {}}"));
+        assertTrue(e.getMessage().contains("schema_version 3"));
+    }
+
+    @Test
+    void aNewerSchemaVersionIsRefused() {
+        PromptOnException e = assertThrows(PromptOnException.class, () ->
+                UseCaseDocument.parse("{\"schema_version\": 5, \"use_cases\": {}}"));
+        assertTrue(e.getMessage().contains("schema_version 5"));
+    }
+
+    @Test
+    void withNothingCachedAndPromptOnDownUseCaseFailsWithAClearError() {
         server.close();
         try (PromptOn prompton = PromptOn.create(config()
                 .diskCacheEnabled(false)
                 .initialFetchTimeout(Duration.ofMillis(200))
                 .build())) {
-            ResolutionException e = assertThrows(
-                    ResolutionException.class, () -> prompton.resolve("greeting"));
-            assertEquals(ResolutionException.Reason.NOT_READY, e.reason());
-            assertTrue(e.getMessage().contains("no snapshot is cached"));
+            UseCaseException e = assertThrows(
+                    UseCaseException.class, () -> prompton.useCase("greeting"));
+            assertEquals(UseCaseException.Reason.NOT_READY, e.reason());
+            assertTrue(e.getMessage().contains("no use-case document is cached"));
         }
     }
 
@@ -410,8 +437,8 @@ class SnapshotCacheTest {
                 .diskCacheEnabled(false)
                 .bundlePath(bundle)
                 .build())) {
-            assertEquals(ResolutionSource.BUNDLE, prompton.resolve("greeting").source());
-            assertEquals(RefreshOutcome.SKIPPED, prompton.refresh());
+            assertEquals(Source.BUNDLE, prompton.useCase("greeting").source());
+            assertEquals(RefreshResult.SKIPPED, prompton.refresh());
             assertEquals(0, server.requests().size(), "no API key means no remote call at all");
         }
     }
@@ -425,8 +452,8 @@ class SnapshotCacheTest {
                 .diskCacheEnabled(false)
                 .bundlePath(bundle)
                 .build())) {
-            assertEquals(ResolutionSource.BUNDLE, prompton.resolve("greeting").source());
-            assertEquals(RefreshOutcome.SKIPPED, prompton.refresh());
+            assertEquals(Source.BUNDLE, prompton.useCase("greeting").source());
+            assertEquals(RefreshResult.SKIPPED, prompton.refresh());
             assertEquals(0, server.requests().size());
         }
     }
@@ -435,25 +462,25 @@ class SnapshotCacheTest {
     void exportWritesTheDocumentAndItsSidecarForBundling() {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production())
                 .withHeader("etag", "\"sha256-v1\""));
-        Path out = tempDir.resolve("dist").resolve("snapshot.production.json");
+        Path out = tempDir.resolve("dist").resolve("use-cases.production.json");
         try (PromptOn prompton = PromptOn.create(config().build())) {
-            prompton.resolve("greeting");
-            prompton.exportSnapshot(out);
+            prompton.useCase("greeting");
+            prompton.exportUseCaseDocument(out);
         }
         assertTrue(Files.exists(out));
         assertEquals("production", readJson(DiskCache.metaPath(out)).get("environment"));
-        assertNotNull(Snapshot.parse(readString(out)).useCases().get("greeting"));
+        assertNotNull(UseCaseDocument.parse(readString(out)).useCases().get("greeting"));
     }
 
     @Test
-    void snapshotInfoReportsSourceAgeAndIdentity() {
+    void useCaseDocumentInfoReportsSourceAgeAndIdentity() {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production())
                 .withHeader("etag", "\"sha256-v1\""));
         try (PromptOn prompton = PromptOn.create(config().build())) {
-            prompton.resolve("greeting");
-            SnapshotInfo info = prompton.snapshotInfo();
+            prompton.useCase("greeting");
+            UseCaseDocumentInfo info = prompton.useCaseDocumentInfo();
             assertTrue(info.loaded());
-            assertEquals(ResolutionSource.REMOTE, info.source());
+            assertEquals(Source.REMOTE, info.source());
             assertEquals("\"sha256-v1\"", info.etag());
             assertEquals("production", info.environment());
             assertEquals("sdkfixture", info.project());

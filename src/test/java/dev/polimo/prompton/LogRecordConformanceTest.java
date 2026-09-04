@@ -15,10 +15,10 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
-/** Replays {@code conformance/generation_record.json}: the golden monitoring logs and the envelope. */
-class GenerationRecordConformanceTest {
+/** Replays {@code conformance/log_record.json}: the golden monitoring logs and the envelope. */
+class LogRecordConformanceTest {
 
-    private static final Map<String, Object> FILE = Conformance.load("generation_record.json");
+    private static final Map<String, Object> FILE = Conformance.load("log_record.json");
     private static final Set<String> ERROR_KINDS = Set.of(
             "http_4xx", "http_5xx", "rate_limited", "timeout", "transport", "parse", "app");
     private static final Set<String> SOURCES = Set.of("remote", "disk", "bundle", "manual");
@@ -40,8 +40,8 @@ class GenerationRecordConformanceTest {
                 if (record.containsKey("kind")) {
                     assertTrue(KINDS.contains(Json.stringAt(record, "kind")), name);
                 }
-                if (record.containsKey("resolution_source")) {
-                    assertTrue(SOURCES.contains(Json.stringAt(record, "resolution_source")), name);
+                if (record.containsKey("source")) {
+                    assertTrue(SOURCES.contains(Json.stringAt(record, "source")), name);
                 }
                 Map<String, Object> error = Json.mapAt(record, "error");
                 if (error != null) {
@@ -64,11 +64,11 @@ class GenerationRecordConformanceTest {
     }
 
     @Test
-    void theBatchEnvelopeIsOneGenerationsArray() {
+    void theBatchEnvelopeIsOneLogsArray() {
         Map<String, Object> envelope = Json.mapAt(FILE, "batch_envelope");
         Map<String, Object> request = Json.mapAt(envelope, "request");
-        assertEquals(Set.of("generations"), request.keySet());
-        assertEquals(5, Json.listAt(request, "generations").size());
+        assertEquals(Set.of("logs"), request.keySet());
+        assertEquals(5, Json.listAt(request, "logs").size());
 
         Map<String, Object> response = Json.mapAt(envelope, "response_example");
         assertEquals(5, Json.intAt(response, "accepted", -1));
@@ -90,7 +90,7 @@ class GenerationRecordConformanceTest {
                         "field " + key);
             }
         });
-        assertEquals(Map.of("name", "prompton-java", "version", "0.1.0"), actual.get("sdk"));
+        assertEquals(Map.of("name", "prompton-java", "version", "0.2.0"), actual.get("sdk"));
         assertTrue(UuidV7.isUuidV7(Json.stringAt(actual, "id")));
         assertNotNull(actual.get("latency_ms"));
 
@@ -103,17 +103,17 @@ class GenerationRecordConformanceTest {
     }
 
     private Map<String, Object> buildChatSuccess(Map<String, Object> golden) throws Exception {
-        Snapshot snapshot = Snapshot.parse(goldenSnapshot());
+        UseCaseDocument document = UseCaseDocument.parse(goldenDocument());
         try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
                 .mode(Mode.TEST)
                 .environment("production")
                 .diskCacheEnabled(false)
                 .build())) {
-            prompton.putSnapshot(snapshot, ResolutionSource.REMOTE);
-            Resolution pin = prompton.resolve("greeting");
-            List<Message> messages = prompton.renderMessages(pin, Map.of("name", "Ada"));
+            prompton.putUseCaseDocument(document, Source.REMOTE);
+            UseCase pin = prompton.useCase("greeting");
+            List<Message> messages = pin.messages(Map.of("name", "Ada"));
 
-            prompton.withGeneration(pin, GenerationMeta.builder()
+            pin.track(TrackMeta.builder()
                             .inputMessages(messages)
                             .variables(Map.of("name", "Ada"))
                             .endUserRef("user-42")
@@ -122,13 +122,13 @@ class GenerationRecordConformanceTest {
                             .context(Map.of("language", "en", "plan", "pro"))
                             .metadata(Map.of("job_id", 8842, "attempt", 1))
                             .build(),
-                    () -> ProviderResult.ok("ok", GenerationOutcome.builder()
+                    () -> ProviderResult.ok("ok", Result.builder()
                             .content("Hello, Ada! Lovely to see you.")
                             .finishReason("stop")
                             .modelUsed("openai/gpt-4o-mini")
                             .upstreamProvider("OpenAI")
                             .byok(false)
-                            .usage(new GenerationUsage(38, 9, 0.000112, "provider", Map.of(
+                            .usage(new Usage(38, 9, 0.000112, "provider", Map.of(
                                     "prompt_tokens", 38, "completion_tokens", 9, "total_tokens", 47)))
                             .build()));
 
@@ -148,9 +148,9 @@ class GenerationRecordConformanceTest {
         throw new IllegalStateException("no golden record named " + name);
     }
 
-    /** The snapshot the golden records were produced from, as {@code resolve.json} records it. */
-    private static String goldenSnapshot() {
-        Map<String, Object> resolve = Conformance.load("resolve.json");
-        return Json.write(Json.mapAt(Json.mapAt(resolve, "snapshots"), "production"));
+    /** The use-case document the golden records were produced from, as {@code use_case.json} records it. */
+    private static String goldenDocument() {
+        Map<String, Object> useCaseContract = Conformance.load("use_case.json");
+        return Json.write(Json.mapAt(Json.mapAt(useCaseContract, "documents"), "production"));
     }
 }

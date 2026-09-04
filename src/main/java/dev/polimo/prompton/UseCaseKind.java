@@ -17,12 +17,12 @@ public enum UseCaseKind {
         this.wireName = wireName;
     }
 
-    /** The value used in the snapshot and in monitoring logs. */
+    /** The value used in the use-case document and in monitoring logs. */
     public String wireName() {
         return wireName;
     }
 
-    /** Parses a snapshot value; anything unrecognised (or {@code null}) is {@link #CHAT}. */
+    /** Parses a use-case document value; anything unrecognised (or {@code null}) is {@link #CHAT}. */
     public static UseCaseKind from(String value) {
         if (value == null) {
             return CHAT;

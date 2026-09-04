@@ -48,7 +48,7 @@ public class TemplateException extends PromptOnException {
     }
 
     /** A {@link Kind#RENDER_ERROR} failure. */
-    public static TemplateException renderError(String message) {
+    static TemplateException renderError(String message) {
         return new TemplateException(Kind.RENDER_ERROR, null, message);
     }
 

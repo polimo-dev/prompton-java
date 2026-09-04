@@ -31,7 +31,7 @@ public enum StopKind {
     LENGTH("length"),
     /** The model asked to call a tool. */
     TOOL_CALL("tool_call"),
-    /** The provider's safety filter stopped the generation. */
+    /** The provider's safety filter stopped the call. */
     CONTENT_FILTER("content_filter"),
     /** Anything else, including an absent or unrecognised finish reason. */
     OTHER("other");
