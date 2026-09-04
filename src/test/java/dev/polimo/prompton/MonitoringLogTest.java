@@ -77,7 +77,7 @@ class MonitoringLogTest {
             FlushResult result = prompton.flush(Duration.ofSeconds(5));
 
             assertEquals(1, result.batches());
-            assertEquals(2, result.sent());
+            assertEquals(2, result.records());
             List<StubServer.Request> posts = server.requests("/generations");
             assertEquals(1, posts.size());
             assertEquals("environment=production", posts.get(0).query());
@@ -109,19 +109,26 @@ class MonitoringLogTest {
     }
 
     @Test
-    void oneBatchPerEnvironment() {
+    void oneBatchPerEnvironmentEvenWhenTheRecordsInterleave() {
         try (PromptOn prompton = PromptOn.create(config().build())) {
-            prompton.log(GenerationRecord.builder()
-                    .useCase("greeting").model("m").status(GenerationRecord.Status.OK)
-                    .startedAt(Instant.now()).environment("production").build());
-            prompton.log(GenerationRecord.builder()
-                    .useCase("greeting").model("m").status(GenerationRecord.Status.OK)
-                    .startedAt(Instant.now()).environment("staging").build());
-            prompton.flush(Duration.ofSeconds(5));
+            for (int i = 0; i < 50; i++) {
+                prompton.log(GenerationRecord.builder()
+                        .useCase("greeting").model("m").status(GenerationRecord.Status.OK)
+                        .startedAt(Instant.now())
+                        .environment(i % 2 == 0 ? "production" : "staging")
+                        .build());
+            }
+            FlushResult result = prompton.flush(Duration.ofSeconds(10));
 
+            List<StubServer.Request> posts = server.requests("/generations");
             List<String> queries = new ArrayList<>();
-            server.requests("/generations").forEach(r -> queries.add(r.query()));
-            assertEquals(List.of("environment=production", "environment=staging"), queries);
+            posts.forEach(r -> queries.add(r.query()));
+            assertEquals(List.of("environment=production", "environment=staging"), queries,
+                    "two environments are two requests, never one request per record");
+            assertEquals(2, result.batches());
+            assertEquals(50, result.records());
+            assertEquals(25, Json.listAt(Json.parseObject(posts.get(0).body()), "generations").size());
+            assertEquals(25, Json.listAt(Json.parseObject(posts.get(1).body()), "generations").size());
         }
     }
 

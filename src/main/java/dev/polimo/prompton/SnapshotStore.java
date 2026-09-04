@@ -11,8 +11,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,8 +53,10 @@ final class SnapshotStore implements AutoCloseable {
     private final PromptOnConfig config;
     private final AtomicReference<Entry> current = new AtomicReference<>();
     private final AtomicBoolean refreshing = new AtomicBoolean();
+    private final AtomicBoolean refreshQueued = new AtomicBoolean();
     private final AtomicLong httpCalls = new AtomicLong();
-    private final CountDownLatch firstAttempt = new CountDownLatch(1);
+    private final AtomicLong attemptsFinished = new AtomicLong();
+    private final Object arrival = new Object();
     private final Object scheduleLock = new Object();
 
     private volatile Instant nextAttemptAt = Instant.EPOCH;
@@ -70,18 +72,16 @@ final class SnapshotStore implements AutoCloseable {
     /** Loads the local tiers and, in live mode, starts the poll loop. */
     void start() {
         if (config.mode() == Mode.TEST) {
-            firstAttempt.countDown();
             return;
         }
         loadLocal();
         if (!config.remoteEnabled()) {
             if (!noKeyLogged) {
                 noKeyLogged = true;
-                LOG.log(Level.INFO, () -> "[PromptOn] no API key configured; resolving from "
+                LOG.log(Level.INFO, () -> "[PromptOn] " + whyNoRemote() + "; resolving from "
                         + (current.get() == null ? "nothing" : current.get().source().wireName())
                         + " only, and never contacting the server");
             }
-            firstAttempt.countDown();
             return;
         }
         synchronized (scheduleLock) {
@@ -93,10 +93,19 @@ final class SnapshotStore implements AutoCloseable {
                 poller.scheduleWithFixedDelay(
                         this::pollTick, 0, Math.max(1, config.cacheTtl().toMillis()),
                         TimeUnit.MILLISECONDS);
-            } else {
-                refresher.execute(this::refreshQuietly);
             }
         }
+        if (!config.pollingEnabled()) {
+            triggerRefresh();
+        }
+    }
+
+    /** Why no remote call will be made: the mode, or the missing key. */
+    private String whyNoRemote() {
+        if (config.mode() != Mode.LIVE) {
+            return config.mode().name().toLowerCase(java.util.Locale.ROOT) + " mode";
+        }
+        return "no API key configured";
     }
 
     private static Thread daemon(Runnable runnable, String name) {
@@ -117,18 +126,11 @@ final class SnapshotStore implements AutoCloseable {
     Entry require() {
         Entry entry = current.get();
         if (entry != null) {
-            ensureFresh();
+            triggerRefresh();
             return entry;
         }
         if (config.remoteEnabled()) {
-            try {
-                if (!firstAttempt.await(config.initialFetchTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
-                    LOG.warning("[PromptOn] the first snapshot fetch has not returned yet");
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            entry = current.get();
+            entry = awaitFirstDocument();
         }
         if (entry == null) {
             throw ResolutionException.of(ResolutionException.Reason.NOT_READY, null);
@@ -136,21 +138,84 @@ final class SnapshotStore implements AutoCloseable {
         return entry;
     }
 
-    /** Triggers a background refresh when the TTL has passed and no retry pause is in force. */
-    void ensureFresh() {
-        if (!config.remoteEnabled() || refreshing.get()) {
-            return;
+    /**
+     * Starts an attempt when one is due and waits for it, so a process that came up while PromptOn
+     * was down recovers on a later resolve instead of failing for the rest of its life. Waits only
+     * while an attempt is actually running: during a rate-limit pause or a backoff it returns at
+     * once, because nothing is going to change until the pause has elapsed.
+     */
+    private Entry awaitFirstDocument() {
+        long seen = attemptsFinished.get();
+        if (!triggerRefresh()) {
+            return current.get();
+        }
+        Instant deadline = Instant.now().plus(config.initialFetchTimeout());
+        synchronized (arrival) {
+            while (current.get() == null && attemptsFinished.get() == seen) {
+                long wait = Duration.between(Instant.now(), deadline).toMillis();
+                if (wait <= 0) {
+                    LOG.warning("[PromptOn] the first snapshot fetch has not returned yet");
+                    break;
+                }
+                try {
+                    arrival.wait(wait);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return current.get();
+    }
+
+    /**
+     * Queues a background refresh when the TTL has passed and no retry pause is in force.
+     *
+     * <p>At most one refresh is ever in flight and at most one more queued behind it, so a burst of
+     * resolves arriving on an expired TTL produces one fetch, not one per caller.
+     *
+     * @return whether an attempt is now running or queued, and therefore worth waiting for
+     */
+    private boolean triggerRefresh() {
+        if (!config.remoteEnabled()) {
+            return false;
+        }
+        if (refreshing.get() || refreshQueued.get()) {
+            return true;
         }
         if (Instant.now().isBefore(nextAttemptAt)) {
-            return;
+            return false;
         }
         ScheduledExecutorService executor;
         synchronized (scheduleLock) {
             executor = refresher;
         }
-        if (executor != null && !executor.isShutdown()) {
-            executor.execute(this::refreshQuietly);
+        if (executor == null || executor.isShutdown()) {
+            return false;
         }
+        if (!refreshQueued.compareAndSet(false, true)) {
+            return true;
+        }
+        try {
+            executor.execute(this::backgroundRefresh);
+            return true;
+        } catch (RejectedExecutionException e) {
+            refreshQueued.set(false);
+            return false;
+        }
+    }
+
+    /**
+     * A queued refresh, run on the refresher thread. It re-reads the pause first: a {@code 429} or a
+     * backoff may have been set after this task was queued, and the contract is that the server is
+     * not contacted again before {@code Retry-After} has elapsed.
+     */
+    private void backgroundRefresh() {
+        refreshQueued.set(false);
+        if (Instant.now().isBefore(nextAttemptAt)) {
+            return;
+        }
+        refreshQuietly();
     }
 
     private void pollTick() {
@@ -180,7 +245,10 @@ final class SnapshotStore implements AutoCloseable {
             return fetch();
         } finally {
             refreshing.set(false);
-            firstAttempt.countDown();
+            synchronized (arrival) {
+                attemptsFinished.incrementAndGet();
+                arrival.notifyAll();
+            }
         }
     }
 
@@ -243,9 +311,10 @@ final class SnapshotStore implements AutoCloseable {
             return RefreshOutcome.UPDATED;
         }
         if (status == 429) {
-            return failed("rate limited", readRetryAfter(response));
+            return failed("rate limited", Backoff.retryAfterFrom(response));
         }
-        return failed("HTTP " + status + ": " + shorten(response.body()), readRetryAfter(response));
+        return failed("HTTP " + status + ": " + shorten(response.body()),
+                Backoff.retryAfterFrom(response));
     }
 
     private static String shorten(String body) {
@@ -253,21 +322,6 @@ final class SnapshotStore implements AutoCloseable {
             return "";
         }
         return body.length() <= 200 ? body : body.substring(0, 200) + "…";
-    }
-
-    private static Duration readRetryAfter(HttpResponse response) {
-        Duration header = Backoff.retryAfter(response.header("retry-after"));
-        if (header != null) {
-            return header;
-        }
-        try {
-            Map<String, Object> error = Json.mapAt(Json.parseObject(response.body()), "error");
-            Map<String, Object> details = Json.mapAt(error, "details");
-            Integer seconds = Json.intAt(details, "retry_after", null);
-            return seconds == null ? null : Duration.ofSeconds(seconds);
-        } catch (RuntimeException ignored) {
-            return null;
-        }
     }
 
     private RefreshOutcome failed(String reason, Duration retryAfter) {
@@ -290,7 +344,9 @@ final class SnapshotStore implements AutoCloseable {
     /** Installs a document the application supplied. */
     void put(Snapshot snapshot, ResolutionSource source, String rawJson) {
         current.set(new Entry(snapshot, null, null, source, Instant.now(), null, rawJson));
-        firstAttempt.countDown();
+        synchronized (arrival) {
+            arrival.notifyAll();
+        }
     }
 
     /** Clears the document in memory. */

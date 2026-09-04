@@ -2,6 +2,7 @@ package dev.polimo.prompton;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -79,6 +80,33 @@ class PromptOnConfigTest {
     @Test
     void theDiskCacheCanBeTurnedOff() {
         assertNull(PromptOnConfig.builder().diskCacheEnabled(false).build().diskCachePath());
+    }
+
+    @Test
+    void aBuilderCanBeBuiltTwiceAndTheSecondConfigIsItsOwn() {
+        PromptOnConfig.Builder builder = PromptOnConfig.builder()
+                .apiKey("ptn_alpha_secret")
+                .project(null)
+                .host("http://one.example")
+                .environment("production");
+
+        PromptOnConfig production = builder.build();
+        PromptOnConfig staging = builder.host("http://two.example").environment("staging").build();
+
+        assertEquals("http://one.example/api/v1", production.baseUrl());
+        assertEquals("http://two.example/api/v1", staging.baseUrl());
+        assertEquals("production", production.environment());
+        assertEquals("staging", staging.environment());
+        assertTrue(production.diskCachePath().toString().endsWith("snapshot-alpha-production.json"),
+                String.valueOf(production.diskCachePath()));
+        assertTrue(staging.diskCachePath().toString().endsWith("snapshot-alpha-staging.json"),
+                String.valueOf(staging.diskCachePath()));
+        assertNotSame(production.httpClient(), staging.httpClient(),
+                "two configurations must not share one HTTP client with confused ownership");
+        assertTrue(production.ownsHttpClient());
+        assertTrue(staging.ownsHttpClient());
+        production.httpClient().close();
+        staging.httpClient().close();
     }
 
     @Test

@@ -269,7 +269,7 @@ class LiveFixtureIT {
 
             assertEquals("Hello, Ada!", answer);
             FlushResult result = client.flush(Duration.ofSeconds(10));
-            assertEquals(1, result.sent());
+            assertEquals(1, result.records());
             assertEquals(0, result.rejected());
             assertEquals(0, result.remaining());
         }

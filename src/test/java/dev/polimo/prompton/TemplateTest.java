@@ -59,7 +59,7 @@ class TemplateTest {
     @Test
     void aRealisticMigratedPromptPassesLintAndRenders() {
         String source = """
-            {% if language == "ko" %}한국어로 답하세요.{% else %}Answer in English.{% endif %}
+            {% if language == "fr" %}Reponds en francais.{% else %}Answer in English.{% endif %}
             {% for note in notes %}- {{ note }}
             {% endfor %}Total: {{ notes | size }}""";
 

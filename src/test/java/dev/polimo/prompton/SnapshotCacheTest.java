@@ -14,6 +14,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -127,6 +131,116 @@ class SnapshotCacheTest {
             assertEquals(after429, calls.get(),
                     "no request is made before Retry-After has elapsed");
             assertTrue(prompton.snapshotInfo().stale(), "the document is flagged stale");
+        }
+    }
+
+    @Test
+    void aBurstOfResolvesOnAnExpiredTtlTriggersOneRefreshNotOnePerCaller() throws Exception {
+        server.handle(request -> StubServer.Reply.ok(Fixtures.production())
+                .withHeader("etag", "\"v1\""));
+        try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(200)).build())) {
+            prompton.resolve("greeting");
+            assertEquals(1, server.requests("/snapshot").size());
+            Thread.sleep(250);
+
+            int threads = 32;
+            CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(threads);
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            try {
+                for (int t = 0; t < threads; t++) {
+                    pool.execute(() -> {
+                        try {
+                            start.await();
+                            for (int i = 0; i < 100; i++) {
+                                prompton.resolve("greeting");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                assertTrue(done.await(30, TimeUnit.SECONDS));
+            } finally {
+                pool.shutdownNow();
+            }
+            Thread.sleep(50);
+            assertEquals(2, server.requests("/snapshot").size(),
+                    "3200 resolves on one expired TTL are one refresh, not one fetch per caller");
+        }
+    }
+
+    @Test
+    void afterARateLimitNotOneOfAThousandResolvesContactsTheServer() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        server.handle(request -> calls.incrementAndGet() == 1
+                ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
+                : StubServer.Reply.of(429, "{\"error\":{\"code\":\"rate_limited\"}}")
+                        .withHeader("retry-after", "120"));
+        try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(20)).build())) {
+            prompton.resolve("greeting");
+            Thread.sleep(40);
+            prompton.resolve("greeting");
+            waitUntil(() -> calls.get() >= 2);
+            assertEquals(2, calls.get(), "the refresh after the TTL was the one that got the 429");
+
+            int threads = 16;
+            CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(threads);
+            ExecutorService pool = Executors.newFixedThreadPool(threads);
+            try {
+                for (int t = 0; t < threads; t++) {
+                    pool.execute(() -> {
+                        try {
+                            start.await();
+                            for (int i = 0; i < 100; i++) {
+                                assertEquals("openai/gpt-4o-mini",
+                                        prompton.resolve("greeting").model());
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            done.countDown();
+                        }
+                    });
+                }
+                start.countDown();
+                assertTrue(done.await(30, TimeUnit.SECONDS));
+            } finally {
+                pool.shutdownNow();
+            }
+            Thread.sleep(50);
+            assertEquals(2, calls.get(),
+                    "Retry-After: 120 was read, so nothing may reach the server before it elapses");
+        }
+    }
+
+    @Test
+    void aColdStartWhilePromptOnIsDownRecoversWhenItComesBack() throws Exception {
+        int port = server.port();
+        server.close();
+
+        try (PromptOn prompton = PromptOn.create(config()
+                .diskCacheEnabled(false)
+                .pollingEnabled(false)
+                .cacheTtl(Duration.ofMillis(20))
+                .initialFetchTimeout(Duration.ofMillis(500))
+                .build())) {
+            ResolutionException e = assertThrows(
+                    ResolutionException.class, () -> prompton.resolve("greeting"));
+            assertEquals(ResolutionException.Reason.NOT_READY, e.reason());
+
+            server = new StubServer(port);
+            server.handle(request -> StubServer.Reply.ok(Fixtures.production())
+                    .withHeader("etag", "\"v1\""));
+            Thread.sleep(60);
+
+            assertEquals("openai/gpt-4o-mini", prompton.resolve("greeting").model(),
+                    "a cold start during an outage must recover, not fail for the process's life");
+            assertEquals(ResolutionSource.REMOTE, prompton.snapshotInfo().source());
         }
     }
 

@@ -1,10 +1,13 @@
 package dev.polimo.prompton;
 
+import dev.polimo.prompton.http.HttpResponse;
+import dev.polimo.prompton.internal.Json;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Map;
 
 /** How long to wait before trying PromptOn again. Shared by the snapshot poller and the log buffer. */
 final class Backoff {
@@ -45,6 +48,28 @@ final class Backoff {
             Duration wait = Duration.between(Instant.now(), when);
             return wait.isNegative() ? Duration.ZERO : wait;
         } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * The wait a response asks for: the {@code Retry-After} header, falling back to the contract's
+     * {@code error.details.retry_after} in the body.
+     *
+     * @param response the answer PromptOn gave
+     * @return the wait, or {@code null} when the response names none
+     */
+    static Duration retryAfterFrom(HttpResponse response) {
+        Duration header = retryAfter(response.header("retry-after"));
+        if (header != null) {
+            return header;
+        }
+        try {
+            Map<String, Object> error = Json.mapAt(Json.parseObject(response.body()), "error");
+            Map<String, Object> details = Json.mapAt(error, "details");
+            Integer seconds = Json.intAt(details, "retry_after", null);
+            return seconds == null ? null : Duration.ofSeconds(Math.max(0, seconds));
+        } catch (RuntimeException ignored) {
             return null;
         }
     }

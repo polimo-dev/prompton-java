@@ -29,7 +29,11 @@ import java.util.logging.Logger;
  *
  * <p>A batch is sent when the queue reaches the size or byte trigger, or when the flush interval
  * elapses, and carries at most 200 records and under 5 MB — one batch per environment, since
- * {@code ?environment=} applies to the whole request. Record ids are UUIDv7 idempotency keys, so a
+ * {@code ?environment=} applies to the whole request. Records are therefore held in one queue per
+ * environment and a batch drains the environment whose oldest record has waited longest, so a call
+ * site logging into two environments still sends two requests rather than one per record.
+ *
+ * <p>Record ids are UUIDv7 idempotency keys, so a
  * retry is safe: a {@code 429} or any 5xx resends the same batch with the same ids, honouring
  * {@code Retry-After} and otherwise doubling from one second up to five minutes; a {@code 413} is
  * split in half; any other 4xx drops the batch, because retrying a request PromptOn has refused only
@@ -43,7 +47,7 @@ final class LogBuffer implements AutoCloseable {
     private static final int MAX_BATCH_BYTES = 4_500_000;
     private static final Duration RETRY_BASE = Duration.ofSeconds(1);
 
-    private record Queued(Map<String, Object> record, String environment, int bytes) {}
+    private record Queued(Map<String, Object> record, String environment, int bytes, long sequence) {}
 
     private static final class Batch {
         final List<Queued> records;
@@ -58,7 +62,7 @@ final class LogBuffer implements AutoCloseable {
     }
 
     private final PromptOnConfig config;
-    private final ArrayDeque<Queued> queue = new ArrayDeque<>();
+    private final Map<String, ArrayDeque<Queued>> queues = new LinkedHashMap<>();
     private final ArrayDeque<Batch> pending = new ArrayDeque<>();
     private final Object lock = new Object();
     private final ScheduledExecutorService sender;
@@ -69,7 +73,9 @@ final class LogBuffer implements AutoCloseable {
     private final AtomicLong droppedFailed = new AtomicLong();
     private final AtomicLong retries = new AtomicLong();
 
+    private int queuedCount;
     private long queuedBytes;
+    private long nextSequence;
     private Instant pausedUntil = Instant.EPOCH;
     private Instant lastFullWarning = Instant.EPOCH;
     private boolean fourxxLogged;
@@ -102,21 +108,51 @@ final class LogBuffer implements AutoCloseable {
             droppedFailed.incrementAndGet();
             return;
         }
+        String key = environment == null ? config.environment() : environment;
         boolean trigger;
         synchronized (lock) {
-            while (queue.size() >= config.logMaxBuffer() && !queue.isEmpty()) {
-                Queued oldest = queue.removeFirst();
-                queuedBytes -= oldest.bytes();
-                droppedFull.incrementAndGet();
+            while (queuedCount >= config.logMaxBuffer() && dropOldest()) {
                 warnQueueFull();
             }
-            queue.addLast(new Queued(record, environment, bytes));
+            queues.computeIfAbsent(key, k -> new ArrayDeque<>())
+                    .addLast(new Queued(record, key, bytes, nextSequence++));
+            queuedCount++;
             queuedBytes += bytes;
-            trigger = queue.size() >= config.logFlushSize() || queuedBytes >= config.logFlushBytes();
+            trigger = queuedCount >= config.logFlushSize() || queuedBytes >= config.logFlushBytes();
         }
         if (trigger) {
             submit(this::tick);
         }
+    }
+
+    /** Drops the record that has waited longest, whichever environment it belongs to. */
+    private boolean dropOldest() {
+        ArrayDeque<Queued> oldest = oldestQueue();
+        if (oldest == null) {
+            return false;
+        }
+        Queued dropped = oldest.removeFirst();
+        if (oldest.isEmpty()) {
+            queues.remove(dropped.environment());
+        }
+        queuedCount--;
+        queuedBytes -= dropped.bytes();
+        droppedFull.incrementAndGet();
+        return true;
+    }
+
+    /** The environment queue whose head has waited longest, or {@code null} when nothing is queued. */
+    private ArrayDeque<Queued> oldestQueue() {
+        ArrayDeque<Queued> best = null;
+        long bestSequence = Long.MAX_VALUE;
+        for (ArrayDeque<Queued> candidate : queues.values()) {
+            Queued head = candidate.peekFirst();
+            if (head != null && head.sequence() < bestSequence) {
+                bestSequence = head.sequence();
+                best = candidate;
+            }
+        }
+        return best;
     }
 
     private void warnQueueFull() {
@@ -162,18 +198,21 @@ final class LogBuffer implements AutoCloseable {
     private FlushResult snapshotResult(int batches, int records, int accepted, int duplicates,
             int rejected) {
         synchronized (lock) {
-            int remaining = queue.size() + pending.stream().mapToInt(b -> b.records.size()).sum();
-            return new FlushResult(batches, records, accepted, duplicates, rejected, remaining);
+            return new FlushResult(batches, records, accepted, duplicates, rejected, remaining());
         }
     }
 
     /** Snapshot of the queue and its counters. */
     LogStats stats() {
         synchronized (lock) {
-            int remaining = queue.size() + pending.stream().mapToInt(b -> b.records.size()).sum();
-            return new LogStats(remaining, queuedBytes, sent.get(), droppedFull.get(),
+            return new LogStats(remaining(), queuedBytes, sent.get(), droppedFull.get(),
                     droppedRejected.get(), droppedFailed.get(), retries.get());
         }
+    }
+
+    /** Records still waiting: queued, plus those in a batch that is waiting to be retried. */
+    private int remaining() {
+        return queuedCount + pending.stream().mapToInt(b -> b.records.size()).sum();
     }
 
     // ---------------------------------------------------------------------
@@ -242,24 +281,26 @@ final class LogBuffer implements AutoCloseable {
                 }
                 return batch;
             }
-            if (queue.isEmpty()) {
+            ArrayDeque<Queued> oldest = oldestQueue();
+            if (oldest == null) {
                 return null;
             }
-            String environment = queue.peekFirst().environment();
+            String environment = oldest.peekFirst().environment();
             List<Queued> records = new ArrayList<>();
             int bytes = 0;
-            while (!queue.isEmpty() && records.size() < MAX_BATCH_RECORDS) {
-                Queued head = queue.peekFirst();
-                if (!java.util.Objects.equals(head.environment(), environment)) {
-                    break;
-                }
+            while (!oldest.isEmpty() && records.size() < MAX_BATCH_RECORDS) {
+                Queued head = oldest.peekFirst();
                 if (!records.isEmpty() && bytes + head.bytes() > MAX_BATCH_BYTES) {
                     break;
                 }
-                queue.removeFirst();
+                oldest.removeFirst();
+                queuedCount--;
                 queuedBytes -= head.bytes();
                 bytes += head.bytes();
                 records.add(head);
+            }
+            if (oldest.isEmpty()) {
+                queues.remove(environment);
             }
             return new Batch(records, environment, 0);
         }
@@ -282,8 +323,11 @@ final class LogBuffer implements AutoCloseable {
             droppedFailed.addAndGet(batch.records.size());
             if (!offlineLogged) {
                 offlineLogged = true;
-                LOG.info("[PromptOn] no API key, or offline mode: monitoring logs are counted and"
-                        + " dropped rather than sent");
+                LOG.info("[PromptOn] " + (config.mode() == Mode.LIVE
+                                ? "no API key configured"
+                                : config.mode().name().toLowerCase(java.util.Locale.ROOT) + " mode")
+                        + ": monitoring logs are counted in logStats().droppedFailed() and dropped"
+                        + " rather than sent or stored");
             }
             return;
         }
@@ -322,8 +366,7 @@ final class LogBuffer implements AutoCloseable {
             return;
         }
         if (status == 429 || status >= 500) {
-            retryLater(batch, Backoff.retryAfter(response.header("retry-after")),
-                    "HTTP " + status);
+            retryLater(batch, Backoff.retryAfterFrom(response), "HTTP " + status);
             return;
         }
         droppedFailed.addAndGet(batch.records.size());

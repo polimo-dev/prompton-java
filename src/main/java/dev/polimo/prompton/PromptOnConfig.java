@@ -57,17 +57,17 @@ public final class PromptOnConfig {
     private final PayloadPolicy payloadDefaults;
     private final boolean ownsHttpClient;
 
-    private PromptOnConfig(Builder b) {
+    private PromptOnConfig(Builder b, Derived derived) {
         this.apiKey = b.apiKey;
-        this.baseUrl = b.baseUrl;
-        this.environment = b.environment;
-        this.project = b.project;
+        this.baseUrl = derived.baseUrl;
+        this.environment = derived.environment;
+        this.project = derived.project;
         this.cacheTtl = b.cacheTtl;
         this.requestTimeout = b.requestTimeout;
         this.connectTimeout = b.connectTimeout;
         this.initialFetchTimeout = b.initialFetchTimeout;
         this.maxBackoff = b.maxBackoff;
-        this.diskCachePath = b.diskCachePath;
+        this.diskCachePath = derived.diskCachePath;
         this.bundlePath = b.bundlePath;
         this.mode = b.mode;
         this.hashEndUser = b.hashEndUser;
@@ -79,10 +79,23 @@ public final class PromptOnConfig {
         this.logMaxAttempts = b.logMaxAttempts;
         this.shutdownFlushTimeout = b.shutdownFlushTimeout;
         this.pollingEnabled = b.pollingEnabled;
-        this.httpClient = b.httpClient;
+        this.httpClient = derived.httpClient;
         this.payloadDefaults = b.payloadDefaults;
-        this.ownsHttpClient = b.ownsHttpClient;
+        this.ownsHttpClient = derived.ownsHttpClient;
     }
+
+    /**
+     * What {@link Builder#build()} works out from the settings, kept out of the builder's own fields
+     * so that a builder can be reused: two configurations built from one builder, differing only in
+     * {@code environment}, must not share a base URL, a disk-cache path or an HTTP client.
+     */
+    private record Derived(
+            String baseUrl,
+            String environment,
+            String project,
+            Path diskCachePath,
+            PromptOnHttpClient httpClient,
+            boolean ownsHttpClient) {}
 
     /** A configuration builder pre-filled from the environment. */
     public static Builder builder() {
@@ -246,7 +259,6 @@ public final class PromptOnConfig {
         private boolean pollingEnabled = true;
         private PromptOnHttpClient httpClient;
         private PayloadPolicy payloadDefaults = PayloadPolicy.DEFAULT;
-        private boolean ownsHttpClient;
 
         private Builder() {}
 
@@ -401,36 +413,48 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** Resolves defaults and builds the configuration. */
+        /**
+         * Resolves defaults and builds the configuration.
+         *
+         * <p>The builder is left exactly as it was, so it can be reused: build once for production
+         * and again with {@code .environment("staging")} and the second configuration gets its own
+         * disk-cache path, not the first one's.
+         *
+         * @return the configuration
+         */
         public PromptOnConfig build() {
-            if (environment == null) {
-                environment = DEFAULT_ENVIRONMENT;
+            String resolvedEnvironment = environment == null ? DEFAULT_ENVIRONMENT : environment;
+            String resolvedProject = project == null ? projectFromApiKey(apiKey) : project;
+            String resolvedBaseUrl = resolveBaseUrl();
+            Path resolvedDiskCachePath = null;
+            if (diskCacheEnabled) {
+                resolvedDiskCachePath = diskCachePath != null
+                        ? diskCachePath
+                        : defaultDiskCachePath(resolvedProject, resolvedEnvironment);
             }
-            if (project == null) {
-                project = projectFromApiKey(apiKey);
+            boolean owned = httpClient == null;
+            PromptOnHttpClient resolvedHttpClient = owned
+                    ? new dev.polimo.prompton.http.JdkHttpClient(connectTimeout)
+                    : httpClient;
+            return new PromptOnConfig(this, new Derived(resolvedBaseUrl, resolvedEnvironment,
+                    resolvedProject, resolvedDiskCachePath, resolvedHttpClient, owned));
+        }
+
+        private String resolveBaseUrl() {
+            String base = baseUrl;
+            if (base == null) {
+                base = trimTrailingSlashes(host == null ? DEFAULT_HOST : host);
+                return base.endsWith("/api/v1") ? base : base + "/api/v1";
             }
-            if (baseUrl == null) {
-                String base = host == null ? DEFAULT_HOST : host;
-                while (base.endsWith("/")) {
-                    base = base.substring(0, base.length() - 1);
-                }
-                baseUrl = base.endsWith("/api/v1") ? base : base + "/api/v1";
-            } else {
-                while (baseUrl.endsWith("/")) {
-                    baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-                }
+            return trimTrailingSlashes(base);
+        }
+
+        private static String trimTrailingSlashes(String value) {
+            String trimmed = value;
+            while (trimmed.endsWith("/")) {
+                trimmed = trimmed.substring(0, trimmed.length() - 1);
             }
-            if (diskCacheEnabled && diskCachePath == null) {
-                diskCachePath = defaultDiskCachePath(project, environment);
-            }
-            if (!diskCacheEnabled) {
-                diskCachePath = null;
-            }
-            ownsHttpClient = httpClient == null;
-            if (ownsHttpClient) {
-                httpClient = new dev.polimo.prompton.http.JdkHttpClient(connectTimeout);
-            }
-            return new PromptOnConfig(this);
+            return trimmed;
         }
     }
 

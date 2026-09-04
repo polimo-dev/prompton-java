@@ -58,14 +58,29 @@ final class StubServer implements AutoCloseable {
     private volatile Function<Request, Reply> handler = request -> Reply.status(404);
 
     StubServer() {
+        this(0);
+    }
+
+    /**
+     * A server on a chosen port, so a test can close one and bring another up at the same address —
+     * which is how "PromptOn was down when this process started, and then came back" is written.
+     *
+     * @param port the port to bind, or {@code 0} for any free one
+     */
+    StubServer(int port) {
         try {
-            server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         } catch (IOException e) {
             throw new IllegalStateException("could not start the stub server", e);
         }
         server.createContext("/", this::dispatch);
         server.setExecutor(null);
         server.start();
+    }
+
+    /** The port this server is bound to. */
+    int port() {
+        return server.getAddress().getPort();
     }
 
     /** Replaces the handler. */
@@ -75,7 +90,7 @@ final class StubServer implements AutoCloseable {
 
     /** The base URL the SDK should use, already including {@code /api/v1}. */
     String baseUrl() {
-        return "http://127.0.0.1:" + server.getAddress().getPort() + "/api/v1";
+        return "http://127.0.0.1:" + port() + "/api/v1";
     }
 
     /** Every request the server has seen, oldest first. */

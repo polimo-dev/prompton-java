@@ -88,7 +88,7 @@ Precedence is **explicit option > environment variable > default**.
 
 | Option | Environment variable | Default | What it does |
 |---|---|---|---|
-| `apiKey` | `PTN_API_KEY` | none | The runtime key, `ptn_<project>_…`. Without it the SDK makes no remote call at all and resolves from disk or the bundle |
+| `apiKey` | `PTN_API_KEY` | none | The runtime key, `ptn_<project>_…`. Without it the SDK makes no remote call at all: it resolves from disk or the bundle, and monitoring logs are counted in `logStats().droppedFailed()` and dropped rather than stored |
 | `host` | `PTN_HOST` | `https://app.prompton.ai` | The SDK appends `/api/v1` |
 | `baseUrl` | — | `host + "/api/v1"` | Set it when your API base is not under the host root |
 | `environment` | `PTN_ENVIRONMENT` | `production` | Sent as `?environment=`, and the guard that stops a staging process booting on a production document |
@@ -101,7 +101,7 @@ Precedence is **explicit option > environment variable > default**.
 | `diskCachePath` | — | OS cache dir, `prompton/snapshot-<project>-<environment>.json` | Where the snapshot is mirrored |
 | `diskCacheEnabled` | — | `true` | `false` keeps the SDK entirely in memory |
 | `bundlePath` | — | none | A snapshot file shipped inside your application, used when memory and disk are empty |
-| `mode` | — | `LIVE` | `TEST` captures logs and makes no HTTP call; `OFFLINE` resolves from disk or bundle only |
+| `mode` | — | `LIVE` | `TEST` captures logs and makes no HTTP call; `OFFLINE` resolves from disk or bundle only and, like a missing key, counts and drops monitoring logs |
 | `hashEndUser` | — | `false` | Send `sha256(end_user_ref)` instead of the raw reference |
 | `redact` | — | none | `UnaryOperator<Map<String, Object>>` applied to every record last |
 | `logFlushSize` | — | 100 | Flush once this many records are queued |
@@ -161,7 +161,10 @@ Resolution pin = prompton.resolveRemote("support_reply", null);            // ca
 Resolution rendered = prompton.resolveRemote("support_reply", null, vars); // server renders
 ```
 
-Never call `resolveRemote` once per request in a hot loop; that is what the snapshot is for.
+Never call `resolveRemote` once per request in a hot loop; that is what the snapshot is for. It
+follows the same rules as the snapshot store when PromptOn pushes back: after a `429` the endpoint is
+left alone until `Retry-After` has elapsed, a 5xx or an unreachable server backs off the same way,
+and while the pause is in force the cached answer is served instead of a request.
 
 ## Monitoring logs
 
@@ -231,7 +234,13 @@ Before a record is queued the SDK applies the use case's payload policy from the
 (errors and length truncations are always kept), truncation to the caps the server re-checks,
 `hash`/`none` modes, then `hashEndUser`, then your `redact` hook last.
 
-`logStats()` reports what is queued and what has been dropped, so you can alarm on it.
+Records for different environments are queued separately and each batch drains one environment, so
+logging into production and staging from one process is two requests per flush, not two per record.
+
+`logStats()` reports what is queued and what has been dropped, so you can alarm on it. Mind the two
+counters that sound alike: `FlushResult.records()` is what one flush put on the wire, while
+`LogStats.sent()` is the running total PromptOn actually *accepted* — they differ by duplicates and
+rejections.
 
 ## Resilience
 
@@ -248,9 +257,16 @@ all. Once it has passed the SDK refreshes in the background with `GET /snapshot`
 and never fails one: while it is in flight, and if it fails, the previous document keeps serving.
 
 **Rate limits and failures.** A `429` is honoured to the second from `Retry-After` (falling back to
-`error.details.retry_after`, then to backoff) and no request is made before it has elapsed. A 5xx, a
-timeout or a transport failure backs off by doubling from the TTL up to five minutes. In every case
-the caller sees the previous configuration, not an error.
+`error.details.retry_after`, then to backoff) and no request is made before it has elapsed — not by
+the poll loop, not by a refresh a resolve had already queued, and not by a thousand concurrent
+resolves. A 5xx, a timeout or a transport failure backs off by doubling from the TTL up to five
+minutes. A burst of resolves arriving on an expired TTL is one refresh, never one fetch per caller.
+In every case the caller sees the previous configuration, not an error.
+
+**A cold start during an outage is survivable.** If the very first fetch fails and there is no disk
+cache and no bundle, that resolve fails — there is nothing to answer with — but the failure is not
+permanent: once the backoff has elapsed the next `resolve` attempts a fresh fetch and the process
+recovers by itself, with polling on or off.
 
 **Never the wrong document.** A snapshot whose `environment` or `project` does not match this
 process is ignored, wherever it came from — so a staging build cannot boot on a production bundle.
@@ -281,8 +297,10 @@ Then point the SDK at it with `bundlePath(...)`. The `.meta.json` sidecar carrie
 ### Serverless and short-lived processes
 
 Set `pollingEnabled(false)`: there is no timer, and the refresh happens on the next `resolve` once
-the TTL has passed. On a runtime with no writable disk also set `diskCacheEnabled(false)` and rely on
-`bundlePath` — there the bundle is the primary fallback, not a nicety.
+the TTL has passed — including the retry after a failed first fetch, so an instance that started
+while PromptOn was down still recovers on a later call. On a runtime with no writable disk also set
+`diskCacheEnabled(false)` and rely on `bundlePath` — there the bundle is the primary fallback, not a
+nicety.
 
 ### Prove it
 
@@ -314,6 +332,7 @@ log.info("prompton snapshot: source={} age={}s stale={} etag={}",
 | The log queue is full | Drops the oldest and counts them, warning at most once a minute | Nothing |
 | Your provider call throws | Logs `status: "error"`, `error.kind: "app"`, then rethrows | Your own exception, unchanged |
 | The process is shutting down | `close()` drains the buffer for `shutdownFlushTimeout` | Nothing |
+| No API key, or `Mode.OFFLINE`, and something is logged | Counts every record in `logStats().droppedFailed()` and logs one line saying so | Nothing. Monitoring logs are not queued forever and not stored anywhere |
 
 The rule behind the table: **a generation must never fail because PromptOn did.**
 
@@ -333,7 +352,9 @@ assertEquals("ok", logged.get("status"));
 ```
 
 `Mode.OFFLINE` is the other half: real behaviour, disk and bundle only, no network — useful in CI and
-on a developer laptop with no key.
+on a developer laptop with no key. It cannot send monitoring logs, and it does not hoard them either:
+each record is counted in `logStats().droppedFailed()` and dropped, with one log line saying so. When
+the records are what you are asserting on, use `Mode.TEST`.
 
 ## Conformance
 

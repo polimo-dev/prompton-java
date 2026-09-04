@@ -4,6 +4,7 @@ import dev.polimo.prompton.http.HttpRequest;
 import dev.polimo.prompton.http.HttpResponse;
 import dev.polimo.prompton.internal.Json;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,6 +21,12 @@ import java.util.logging.Logger;
  * case, prompt name and environment, so the app renders locally; called with variables the server
  * renders and the answer is not cached. When PromptOn rate-limits, fails or is unreachable, a
  * cached answer is served rather than an error.
+ *
+ * <p>It follows the snapshot store's rules for a server that has asked to be left alone: after a
+ * {@code 429} the endpoint is not contacted again before {@code Retry-After} — falling back to
+ * {@code error.details.retry_after}, then to a backoff doubling from the TTL up to
+ * {@code maxBackoff} — has elapsed, and a 5xx, a timeout or a transport failure backs off the same
+ * way. While the pause is in force every call is answered from the cache.
  */
 final class ResolveClient {
 
@@ -29,6 +36,9 @@ final class ResolveClient {
 
     private final PromptOnConfig config;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+
+    private volatile Instant pausedUntil = Instant.EPOCH;
+    private volatile int failures;
 
     ResolveClient(PromptOnConfig config) {
         this.config = config;
@@ -46,8 +56,18 @@ final class ResolveClient {
             if (cached != null) {
                 return cached.resolution();
             }
-            throw new PromptOnException(
-                    "POST /resolve needs an API key; configure one or resolve from the snapshot");
+            throw new PromptOnException(config.mode() == Mode.LIVE
+                    ? "POST /resolve needs an API key; configure one or resolve from the snapshot"
+                    : "POST /resolve is not available in " + config.mode().name().toLowerCase(
+                            java.util.Locale.ROOT) + " mode; resolve from the snapshot instead");
+        }
+        Instant pause = pausedUntil;
+        if (Instant.now().isBefore(pause)) {
+            if (cached != null) {
+                return cached.resolution();
+            }
+            throw new PromptOnException("PromptOn asked /resolve to wait until " + pause
+                    + " and nothing is cached for " + key + "; resolve from the snapshot instead");
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -71,28 +91,48 @@ final class ResolveClient {
                     "POST", config.baseUrl() + "/resolve", headers, Json.write(body),
                     config.requestTimeout()));
         } catch (IOException | RuntimeException e) {
+            Duration wait = backOff(null);
             if (cached != null) {
-                LOG.warning("[PromptOn] /resolve is unreachable (" + e + "); serving the cached answer");
+                LOG.warning("[PromptOn] /resolve is unreachable (" + e + "); serving the cached answer"
+                        + " and not calling again for " + wait.toSeconds() + "s");
                 return cached.resolution();
             }
             throw new PromptOnException("could not reach PromptOn: " + e, e);
         }
 
         int status = response.status();
-        if ((status == 429 || status >= 500) && cached != null) {
-            LOG.warning("[PromptOn] /resolve answered HTTP " + status + "; serving the cached answer");
-            return cached.resolution();
+        if (status == 429 || status >= 500) {
+            Duration wait = backOff(Backoff.retryAfterFrom(response));
+            if (cached != null) {
+                LOG.warning("[PromptOn] /resolve answered HTTP " + status + "; serving the cached"
+                        + " answer and not calling again for " + wait.toSeconds() + "s");
+                return cached.resolution();
+            }
         }
         if (status != 200) {
             throw error(response);
         }
 
+        failures = 0;
+        pausedUntil = Instant.EPOCH;
         Resolution resolution = parse(Json.parseObject(response.body()));
         if (cacheable) {
             cache.put(key, new Cached(resolution, Instant.now().plus(config.cacheTtl())));
         }
         return resolution;
     }
+
+    /** Records a failure and returns how long the endpoint is now left alone for. */
+    private Duration backOff(Duration retryAfter) {
+        int attempt = failures + 1;
+        failures = attempt;
+        Duration wait = retryAfter != null
+                ? retryAfter
+                : Backoff.exponential(config.cacheTtl(), attempt, config.maxBackoff());
+        pausedUntil = Instant.now().plus(wait);
+        return wait;
+    }
+
 
     private Resolution parse(Map<String, Object> body) {
         Map<String, Object> deployment = Json.mapAt(body, "deployment");

@@ -75,25 +75,80 @@ class ResolveClientTest {
     }
 
     @Test
-    void aCachedResolveIsServedWhenTheServerRateLimitsOrFails() {
+    void aRateLimitedResolveServesTheCacheAndThenLeavesTheServerAlone() {
         AtomicInteger calls = new AtomicInteger();
         server.handle(request -> {
             if (request.path().endsWith("/resolve")) {
                 return calls.incrementAndGet() == 1
                         ? StubServer.Reply.ok(GREETING)
-                        : StubServer.Reply.of(429, "{\"error\":{\"code\":\"rate_limited\"}}");
+                        : StubServer.Reply.of(429, "{\"error\":{\"code\":\"rate_limited\","
+                                        + "\"details\":{\"retry_after\":60}}}")
+                                .withHeader("retry-after", "60");
             }
             return StubServer.Reply.of(503, "{}");
         });
-        try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
-                .apiKey("k").baseUrl(server.baseUrl()).environment("production")
-                .diskCacheEnabled(false).pollingEnabled(false)
-                .cacheTtl(Duration.ofMillis(1)).build())) {
+        try (PromptOn prompton = shortCache()) {
             assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
             sleep(10);
             assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
-            assertTrue(calls.get() >= 2, "the second call did reach the server");
+            assertEquals(2, calls.get(), "the expired entry did go back to the server, and got a 429");
+
+            for (int i = 0; i < 25; i++) {
+                sleep(2);
+                assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
+            }
+            assertEquals(2, calls.get(),
+                    "Retry-After: 60 was read, so no request may be made before it has elapsed");
         }
+    }
+
+    @Test
+    void aFailingOrUnreachableResolveServesTheCacheAndBacksOff() {
+        AtomicInteger calls = new AtomicInteger();
+        server.handle(request -> {
+            if (request.path().endsWith("/resolve")) {
+                return calls.incrementAndGet() == 1
+                        ? StubServer.Reply.ok(GREETING)
+                        : StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}")
+                                .withHeader("retry-after", "30");
+            }
+            return StubServer.Reply.of(503, "{}");
+        });
+        try (PromptOn prompton = shortCache()) {
+            assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
+            sleep(10);
+            assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
+            assertEquals(2, calls.get());
+
+            server.close();
+            for (int i = 0; i < 10; i++) {
+                sleep(2);
+                assertEquals("openai/gpt-4o-mini", prompton.resolveRemote("greeting", null).model());
+            }
+            assertEquals(2, calls.get(), "a 5xx pauses the endpoint the same way a 429 does");
+        }
+    }
+
+    @Test
+    void withNothingCachedAndTheServerRefusingTheCallerIsToldWhy() {
+        server.handle(request -> StubServer.Reply.of(429,
+                        "{\"error\":{\"code\":\"rate_limited\",\"details\":{\"retry_after\":60}}}")
+                .withHeader("retry-after", "60"));
+        try (PromptOn prompton = shortCache()) {
+            assertThrows(ApiException.class, () -> prompton.resolveRemote("greeting", null));
+            PromptOnException second = assertThrows(PromptOnException.class,
+                    () -> prompton.resolveRemote("greeting", null));
+            assertTrue(second.getMessage().contains("wait until"), second.getMessage());
+            assertEquals(1, server.requests("/resolve").size(), "the pause holds with no cache too");
+        }
+    }
+
+    private PromptOn shortCache() {
+        return PromptOn.create(PromptOnConfig.builder()
+                .apiKey("k").baseUrl(server.baseUrl()).environment("production")
+                .diskCacheEnabled(false).pollingEnabled(false)
+                .requestTimeout(Duration.ofSeconds(3))
+                .cacheTtl(Duration.ofMillis(1)).build());
     }
 
     @Test
