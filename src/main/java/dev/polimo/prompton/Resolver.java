@@ -91,6 +91,9 @@ final class Resolver {
         }
 
         Map<String, Object> params = Params.merge(useCase.defaultParams(), deployment.params());
+        if (version != null) {
+            params = Params.mergeTools(params, version.tools());
+        }
         Map<String, Object> providerOptions = Params.merge(
                 model == null ? null : model.providerOptions(), deployment.providerOptions());
 

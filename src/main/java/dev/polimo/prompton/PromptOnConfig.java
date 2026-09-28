@@ -30,7 +30,7 @@ public final class PromptOnConfig {
     public static final String SDK_NAME = "prompton-java";
 
     /** The SDK's version. */
-    public static final String SDK_VERSION = "0.2.0";
+    public static final String SDK_VERSION = "0.4.0";
 
     private final String apiKey;
     private final String baseUrl;

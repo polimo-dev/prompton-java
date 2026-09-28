@@ -387,14 +387,14 @@ class SnapshotCacheTest {
     void aStringSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
                 UseCaseDocument.parse("{\"schema_version\": \"4\", \"use_cases\": {}}"));
-        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 4"));
+        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 7"));
     }
 
     @Test
     void aFractionalSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
                 UseCaseDocument.parse("{\"schema_version\": 4.0, \"use_cases\": {}}"));
-        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 4"));
+        assertTrue(e.getMessage().contains("schema_version must be the JSON integer 7"));
     }
 
     @Test
@@ -407,8 +407,8 @@ class SnapshotCacheTest {
     @Test
     void aNewerSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"schema_version\": 5, \"use_cases\": {}}"));
-        assertTrue(e.getMessage().contains("schema_version 5"));
+                UseCaseDocument.parse("{\"schema_version\": 8, \"use_cases\": {}}"));
+        assertTrue(e.getMessage().contains("schema_version 8"));
     }
 
     @Test

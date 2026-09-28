@@ -11,15 +11,15 @@ import java.util.TreeMap;
 /**
  * A parsed {@code GET /use-cases} document — everything live in one environment.
  *
- * <p>The SDK reads schema version 4 only. The {@code schema_version} field must be the JSON
- * integer {@code 4}; missing, non-integral, and non-4 version values are refused ({@link #parse}
+ * <p>The SDK reads schema versions 4 through 7. The {@code schema_version} field must be a JSON
+ * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}
  * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
  * version per prompt name.
  */
 public final class UseCaseDocument {
 
     /** The schema version this SDK reads. */
-    public static final int SCHEMA_VERSION = 4;
+    public static final int SCHEMA_VERSION = 7;
 
     /**
      * One use case: what shape of call it is and what its logs may carry.
@@ -75,6 +75,7 @@ public final class UseCaseDocument {
             Integer number,
             Template.Engine engine,
             List<Message> messages,
+            Map<String, Object> tools,
             String textTemplate) {}
 
     /**
@@ -215,9 +216,9 @@ public final class UseCaseDocument {
                             + SCHEMA_VERSION);
         }
         long version = ((Number) raw).longValue();
-        if (version != SCHEMA_VERSION) {
+        if (version < 4 || version > SCHEMA_VERSION) {
             throw new PromptOnException(
-                    "unsupported use-case document schema_version " + version
+                "unsupported use-case document schema_version " + version
                             + "; this SDK reads version "
                             + SCHEMA_VERSION);
         }
@@ -298,6 +299,7 @@ public final class UseCaseDocument {
                 Json.intAt(raw, "number", null),
                 Template.Engine.from(Json.stringAt(raw, "engine")),
                 messages,
+                frozen(Json.mapAt(raw, "tools")),
                 Json.stringAt(raw, "text_template"));
     }
 

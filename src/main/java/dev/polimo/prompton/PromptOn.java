@@ -1,6 +1,11 @@
 package dev.polimo.prompton;
 
+import dev.polimo.prompton.http.HttpRequest;
+import dev.polimo.prompton.http.HttpResponse;
 import dev.polimo.prompton.internal.Json;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -44,6 +49,7 @@ public final class PromptOn implements AutoCloseable {
     private final ResolveClient resolveClient;
     private final LogBuffer buffer;
     private final List<Map<String, Object>> capturedLogs = new CopyOnWriteArrayList<>();
+    private final List<Map<String, Object>> capturedEvents = new CopyOnWriteArrayList<>();
 
     private PromptOn(PromptOnConfig config) {
         this.config = config;
@@ -178,6 +184,119 @@ public final class PromptOn implements AutoCloseable {
             return;
         }
         buffer.enqueue(prepared, environment);
+    }
+
+    /**
+     * Sends tool-attempt and completion trace events to the monitoring endpoint.
+     *
+     * <p>The SDK only records what your application observed. It never executes tools and never
+     * infers tool invocations from provider {@code tool_calls}. Missing {@code event_id},
+     * {@code observed_at}, {@code sdk}, and {@code metadata.sdk.version} are filled once before the
+     * request is sent, so retries by the caller can reuse the same prepared event map.
+     *
+     * @param events up to 500 event maps
+     */
+    public void logEvents(List<Map<String, Object>> events) {
+        logEvents(events, config.environment());
+    }
+
+    /** Sends tool-attempt and completion trace events for a specific environment. */
+    public void logEvents(List<Map<String, Object>> events, String environment) {
+        List<Map<String, Object>> prepared = prepareEvents(events);
+        if (config.mode() == Mode.TEST) {
+            capturedEvents.addAll(prepared);
+            return;
+        }
+        if (!config.remoteEnabled()) {
+            return;
+        }
+        postEvents(prepared, environment == null ? config.environment() : environment);
+    }
+
+    private List<Map<String, Object>> prepareEvents(List<Map<String, Object>> events) {
+        if (events == null) {
+            throw new PromptOnException("events must not be null");
+        }
+        if (events.size() > 500) {
+            throw new PromptOnException("logEvents accepts at most 500 events per request");
+        }
+        List<Map<String, Object>> prepared = new ArrayList<>(events.size());
+        for (Map<String, Object> event : events) {
+            if (event == null) {
+                throw new PromptOnException("events must not contain null entries");
+            }
+            Map<String, Object> copy = new LinkedHashMap<>(event);
+            requireEventField(copy, "trace_id");
+            String kind = requireEventField(copy, "event_kind");
+            if (!List.of("tool_attempt", "completion").contains(kind)) {
+                throw new PromptOnException("event_kind must be tool_attempt or completion");
+            }
+            String status = requireEventField(copy, "status");
+            if (!List.of("started", "ok", "error", "denied", "cancelled", "timeout",
+                    "missing", "incomplete").contains(status)) {
+                throw new PromptOnException("event status is not supported: " + status);
+            }
+            Object arguments = copy.get("arguments");
+            if (arguments != null && !(arguments instanceof Map<?, ?>)) {
+                throw new PromptOnException("event arguments must be a JSON object");
+            }
+            copy.putIfAbsent("event_id", UuidV7.generate());
+            copy.putIfAbsent("observed_at", Instant.now().toString());
+            copy.putIfAbsent("sdk", sdkIdentity());
+            copy.put("metadata", metadataWithSdkVersion(copy.get("metadata")));
+            prepared.add(copy);
+        }
+        return prepared;
+    }
+
+    private static String requireEventField(Map<String, Object> event, String key) {
+        Object value = event.get(key);
+        if (value == null || (value instanceof String s && s.isBlank())) {
+            throw new PromptOnException("event is missing the required field " + key);
+        }
+        return String.valueOf(value);
+    }
+
+    private Map<String, Object> metadataWithSdkVersion(Object original) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (original instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> metadata.put(String.valueOf(key), value));
+        }
+        Object sdk = metadata.get("sdk");
+        Map<String, Object> sdkMetadata = new LinkedHashMap<>();
+        if (sdk instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> sdkMetadata.put(String.valueOf(key), value));
+        }
+        sdkMetadata.putIfAbsent("version", PromptOnConfig.SDK_VERSION);
+        metadata.put("sdk", sdkMetadata);
+        return metadata;
+    }
+
+    private void postEvents(List<Map<String, Object>> events, String environment) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("logs", List.of());
+        body.put("events", events);
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("accept", "application/json");
+        headers.put("content-type", "application/json");
+        headers.put("user-agent", config.userAgent());
+        headers.put("authorization", "Bearer " + config.apiKey());
+        String url = config.baseUrl() + "/logs?environment="
+                + URLEncoder.encode(environment, StandardCharsets.UTF_8);
+        try {
+            HttpResponse response = config.httpClient().send(new HttpRequest(
+                    "POST", url, headers, Json.write(body), config.requestTimeout()));
+            if (response.status() < 200 || response.status() >= 300) {
+                throw new PromptOnException("event log submission failed with HTTP "
+                        + response.status() + ": " + response.body());
+            }
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof PromptOnException pe) {
+                throw pe;
+            }
+            throw new PromptOnException("event log submission failed: " + e.getMessage(), e);
+        }
     }
 
     /** Sends everything queued and waits, up to the configured shutdown timeout. */
@@ -319,6 +438,10 @@ public final class PromptOn implements AutoCloseable {
         if (meta.inputText() != null) {
             input.put("text", meta.inputText());
         }
+        Map<String, Object> effectiveParams = meta.params() != null && useCase != null
+                ? Params.merge(useCase.params(), meta.params())
+                : meta.params() != null ? meta.params() : useCase == null ? null : useCase.params();
+        addToolInputFields(input, effectiveParams);
         if (!input.isEmpty()) {
             builder.input(input);
         }
@@ -341,6 +464,17 @@ public final class PromptOn implements AutoCloseable {
         builder.metadata(metadata);
         builder.context(meta.context() == null ? Map.of() : meta.context());
         return builder.build();
+    }
+
+    private static void addToolInputFields(Map<String, Object> input, Map<String, Object> params) {
+        if (params == null) {
+            return;
+        }
+        for (String key : List.of("tools", "tool_choice", "parallel_tool_calls")) {
+            if (params.containsKey(key)) {
+                input.put(key, params.get(key));
+            }
+        }
     }
 
     private Map<String, Object> sdkIdentity() {
@@ -439,6 +573,16 @@ public final class PromptOn implements AutoCloseable {
         return capturedLogs.isEmpty()
                 ? "<none>"
                 : Json.canonical(capturedLogs.get(capturedLogs.size() - 1));
+    }
+
+    /** The trace events {@link Mode#TEST} captured instead of sending, oldest first. */
+    public List<Map<String, Object>> capturedEvents() {
+        return Collections.unmodifiableList(new ArrayList<>(capturedEvents));
+    }
+
+    /** Forgets every captured trace event. */
+    public void clearCapturedEvents() {
+        capturedEvents.clear();
     }
 
     /** Stops the poll loop and drains the log buffer, best effort. */

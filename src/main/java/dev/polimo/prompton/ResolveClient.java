@@ -166,7 +166,7 @@ final class ResolveClient {
                 .model(Json.stringAt(body, "model"))
                 .modelId(Json.stringAt(body, "model_id"))
                 .provider(Json.stringAt(body, "provider"))
-                .params(Json.mapAt(body, "params"))
+                .params(Params.mergeTools(Json.mapAt(body, "params"), Json.mapAt(body, "tools")))
                 .providerOptions(Json.mapAt(body, "provider_options"))
                 .promptVersionId(version == null ? null : Json.stringAt(version, "id"))
                 .promptVersionNumber(version == null ? null : Json.intAt(version, "number", null))

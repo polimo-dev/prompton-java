@@ -123,7 +123,24 @@ public final class Template {
             List<Message> messages, Map<String, Object> variables, Engine engine) {
         List<Message> rendered = new ArrayList<>(messages.size());
         for (Message message : messages) {
-            rendered.add(message.withContent(render(message.content(), variables, engine)));
+            if ("slot".equals(message.type())) {
+                Object value = variables.get(message.name());
+                if (value instanceof List<?> list) {
+                    for (Object item : list) {
+                        if (item instanceof Message m) {
+                            rendered.add(m);
+                        } else if (item instanceof Map<?, ?> map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> raw = (Map<String, Object>) map;
+                            rendered.add(Message.fromMap(raw));
+                        }
+                    }
+                }
+            } else if (message.contentValue() instanceof String content) {
+                rendered.add(message.withContent(render(content, variables, engine)));
+            } else {
+                rendered.add(message);
+            }
         }
         return rendered;
     }

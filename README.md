@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.2.0")
+    implementation("dev.polimo:prompton-sdk:0.4.0")
 }
 ```
 
@@ -49,7 +49,7 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.2.0</version>
+  <version>0.4.0</version>
 </dependency>
 ```
 
@@ -221,7 +221,7 @@ prompton.log(LogRecord.builder()
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.2.0"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.4.0"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 
@@ -383,3 +383,9 @@ Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE).
 
 PromptOn is a trademark of Polimo. The license does not grant permission to use the PromptOn name or
 logo; forks and derived services must use a different name.
+
+## Prompt tools and trace events
+
+Schema 7 prompt versions may include a `tools` block with OpenAI-compatible function tool definitions plus optional `tool_choice` and `parallel_tool_calls`. The SDK merges those into the provider params it returns and strips authoring-only `output_schema` / `output_examples` before the provider request body is built. The SDK never calls tools itself.
+
+Use `logEvents` to submit observed tool attempts and completion events to the same monitoring endpoint when your application has executed or rejected tool calls. Events require `trace_id`, `event_kind`, and `status`; the SDK fills `event_id`, `observed_at`, SDK identity, and `metadata.sdk.version` when they are absent.

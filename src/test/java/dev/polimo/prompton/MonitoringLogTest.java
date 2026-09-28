@@ -88,7 +88,7 @@ class MonitoringLogTest {
                 Map<String, Object> map = Conformance.map(entry);
                 assertTrue(UuidV7.isUuidV7(String.valueOf(map.get("id"))),
                         "the id must be a UUIDv7, not a v4: " + map.get("id"));
-                assertEquals(Map.of("name", "prompton-java", "version", "0.2.0"), map.get("sdk"));
+                assertEquals(Map.of("name", "prompton-java", "version", "0.4.0"), map.get("sdk"));
             }
         }
     }
@@ -438,6 +438,85 @@ class MonitoringLogTest {
             assertFalse(logged.containsKey("input"));
             assertFalse(logged.containsKey("output"));
             assertEquals("nowhere", logged.get("use_case"));
+        }
+    }
+
+
+    @Test
+    void logEventsPostsTheMonitoringEnvelopeWithStableSdkMetadata() {
+        try (PromptOn prompton = PromptOn.create(config().build())) {
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("trace_id", "trace-1");
+            event.put("event_kind", "tool_attempt");
+            event.put("status", "ok");
+            event.put("tool_call_id", "call_1");
+            event.put("tool_name", "search_diary");
+            event.put("arguments", Map.of("query", "mood"));
+            event.put("result", List.of(Map.of("title", "today")));
+            event.put("completeness", Map.of(
+                    "truncated", false,
+                    "omitted", false,
+                    "expected_events", List.of("evt-1"),
+                    "unresolved_tool_calls", List.of()));
+
+            prompton.logEvents(List.of(event), "staging");
+
+            List<StubServer.Request> posts = server.requests("/logs");
+            assertEquals(1, posts.size());
+            assertEquals("environment=staging", posts.get(0).query());
+            Map<String, Object> body = Json.parseObject(posts.get(0).body());
+            assertEquals(List.of(), body.get("logs"));
+            Map<String, Object> sent = Conformance.map(Json.listAt(body, "events").get(0));
+            assertTrue(UuidV7.isUuidV7(String.valueOf(sent.get("event_id"))));
+            assertNotNull(sent.get("observed_at"));
+            assertEquals(Map.of("name", "prompton-java", "version", "0.4.0"), sent.get("sdk"));
+            assertEquals(Map.of("version", "0.4.0"), Conformance.map(sent.get("metadata")).get("sdk"));
+            assertEquals(Map.of("query", "mood"), sent.get("arguments"));
+            assertEquals(List.of(Map.of("title", "today")), sent.get("result"));
+        }
+    }
+
+    @Test
+    void logEventsValidatesRequiredFieldsAndArgumentsShape() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            PromptOnException missing = assertThrows(PromptOnException.class, () ->
+                    prompton.logEvents(List.of(Map.of("event_kind", "completion", "status", "ok"))));
+            assertTrue(missing.getMessage().contains("trace_id"));
+
+            PromptOnException badArguments = assertThrows(PromptOnException.class, () ->
+                    prompton.logEvents(List.of(Map.of(
+                            "trace_id", "trace-1",
+                            "event_kind", "tool_attempt",
+                            "status", "ok",
+                            "arguments", List.of("not", "object")))));
+            assertTrue(badArguments.getMessage().contains("arguments"));
+        }
+    }
+
+    @Test
+    void trackInputCopiesToolsAndToolPoliciesActuallySentToTheProvider() throws Exception {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            prompton.putUseCaseDocument(Fixtures.production());
+            UseCase pin = prompton.useCase("greeting");
+            List<Message> messages = pin.messages(Map.of("name", "Ada"));
+            List<Object> tools = List.of(Map.of(
+                    "type", "function",
+                    "function", Map.of("name", "lookup_diary", "parameters", Map.of("type", "object"))));
+
+            pin.track(TrackMeta.builder()
+                            .inputMessages(messages)
+                            .params(Map.of(
+                                    "tools", tools,
+                                    "tool_choice", Map.of("type", "function", "function", Map.of("name", "lookup_diary")),
+                                    "parallel_tool_calls", false))
+                            .build(),
+                    () -> ProviderResult.ok("Hello", Result.ofContent("Hello")));
+
+            Map<String, Object> input = Conformance.map(prompton.capturedLogs().get(0).get("input"));
+            assertEquals(tools, input.get("tools"));
+            assertEquals(Map.of("type", "function", "function", Map.of("name", "lookup_diary")),
+                    input.get("tool_choice"));
+            assertEquals(false, input.get("parallel_tool_calls"));
         }
     }
 
