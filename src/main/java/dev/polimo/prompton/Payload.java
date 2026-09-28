@@ -48,7 +48,7 @@ public final class Payload {
 
     private static final int SAMPLE_SCALE = 10_000;
 
-    /** The SDK-side settings the policy needs beyond the use-case document's own. */
+    /** The SDK-side settings the policy needs beyond the prompt document's own. */
     public record Options(boolean hashEndUser, UnaryOperator<Map<String, Object>> redact) {
 
         /** No end-user hashing and no redact hook. */

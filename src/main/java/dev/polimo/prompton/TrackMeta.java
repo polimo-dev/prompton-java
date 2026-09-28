@@ -62,7 +62,7 @@ public final class TrackMeta {
         return inputMessages;
     }
 
-    /** The final prompt text, for a text use case. */
+    /** The final prompt text, for a text prompt. */
     public String inputText() {
         return inputText;
     }
@@ -92,7 +92,7 @@ public final class TrackMeta {
         return metadata;
     }
 
-    /** The params actually sent, when they differ from the use case's. */
+    /** The params actually sent, when they differ from the prompt's. */
     public Map<String, Object> params() {
         return params;
     }
@@ -130,7 +130,7 @@ public final class TrackMeta {
             return this;
         }
 
-        /** @param value the final prompt text, for a text use case */
+        /** @param value the final prompt text, for a text prompt */
         public Builder inputText(String value) {
             this.inputText = value;
             return this;

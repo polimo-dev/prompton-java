@@ -16,16 +16,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
- * The {@code POST /use-cases/{key}/prompt} client: the simple path, and the smoke test that proves
- * a use case resolves.
+ * The {@code POST /renders/{key}/render} client: the simple path, and the smoke test that proves
+ * a prompt resolves.
  *
- * <p>It is not for a hot loop — that is what the use-case document cache is for. Called without variables it
- * returns the raw templates and the answer is cached for the same TTL as the use-case document, per use
+ * <p>It is not for a hot loop — that is what the prompt document cache is for. Called without variables it
+ * returns the raw templates and the answer is cached for the same TTL as the prompt document, per use
  * case, prompt name and environment, so the app renders locally; called with variables the server
  * renders and the answer is not cached. When PromptOn rate-limits, fails or is unreachable, a
  * cached answer is served rather than an error.
  *
- * <p>It follows the use-case document store's rules for a server that has asked to be left alone: after a
+ * <p>It follows the prompt document store's rules for a server that has asked to be left alone: after a
  * {@code 429} the endpoint is not contacted again before {@code Retry-After} — falling back to
  * {@code error.details.retry_after}, then to a backoff doubling from the TTL up to
  * {@code maxBackoff} — has elapsed, and a 5xx, a timeout or a transport failure backs off the same
@@ -60,26 +60,26 @@ final class ResolveClient {
                 return cached.value();
             }
             throw new PromptOnException(config.mode() == Mode.LIVE
-                    ? "POST /use-cases/{key}/prompt needs an API key; configure one or load a use case "
+                    ? "POST /renders/{key}/render needs an API key; configure one or load a prompt "
                             + "from the cached document"
-                    : "POST /use-cases/{key}/prompt is not available in "
+                    : "POST /renders/{key}/render is not available in "
                             + config.mode().name().toLowerCase(java.util.Locale.ROOT)
-                            + " mode; load a use case from the cached document instead");
+                            + " mode; load a prompt from the cached document instead");
         }
         Instant pause = pausedUntil;
         if (Instant.now().isBefore(pause)) {
             if (cached != null) {
                 return cached.value();
             }
-            throw new PromptOnException("PromptOn asked /use-cases/{key}/prompt to wait until " + pause
+            throw new PromptOnException("PromptOn asked /renders/{key}/render to wait until " + pause
                     + " and nothing is cached for " + key
-                    + "; load a use case from the cached document instead");
+                    + "; load a prompt from the cached document instead");
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("environment", config.environment());
         if (promptName != null) {
-            body.put("prompt", promptName);
+            body.put("template", promptName);
         }
         if (variables != null) {
             body.put("variables", variables);
@@ -92,15 +92,15 @@ final class ResolveClient {
 
         HttpResponse response;
         try {
-            String path = "/use-cases/" + URLEncoder.encode(useCase, StandardCharsets.UTF_8)
-                    .replace("+", "%20") + "/prompt";
+            String path = "/renders/" + URLEncoder.encode(useCase, StandardCharsets.UTF_8)
+                    .replace("+", "%20") + "/render";
             response = config.httpClient().send(new HttpRequest(
                     "POST", config.baseUrl() + path, headers, Json.write(body),
                     config.requestTimeout()));
         } catch (IOException | RuntimeException e) {
             Duration wait = backOff(null);
             if (cached != null) {
-                LOG.warning("[PromptOn] /use-cases/{key}/prompt is unreachable (" + e
+                LOG.warning("[PromptOn] /renders/{key}/render is unreachable (" + e
                         + "); serving the cached answer and not calling again for "
                         + wait.toSeconds() + "s");
                 return cached.value();
@@ -112,7 +112,7 @@ final class ResolveClient {
         if (status == 429 || status >= 500) {
             Duration wait = backOff(Backoff.retryAfterFrom(response));
             if (cached != null) {
-                LOG.warning("[PromptOn] /use-cases/{key}/prompt answered HTTP " + status
+                LOG.warning("[PromptOn] /renders/{key}/render answered HTTP " + status
                         + "; serving the cached answer and not calling again for "
                         + wait.toSeconds() + "s");
                 return cached.value();
@@ -146,7 +146,7 @@ final class ResolveClient {
         Map<String, Object> deployment = Json.mapAt(body, "deployment");
         Map<String, Object> version = Json.mapAt(body, "prompt_version");
         List<String> prompts = new ArrayList<>();
-        List<Object> rawPrompts = Json.listAt(body, "prompt_names");
+        List<Object> rawPrompts = Json.listAt(body, "template_names");
         if (rawPrompts != null) {
             rawPrompts.forEach(name -> prompts.add(String.valueOf(name)));
         }
@@ -161,7 +161,7 @@ final class ResolveClient {
                 .kind(UseCaseKind.from(Json.stringAt(body, "kind")))
                 .deploymentId(deployment == null ? null : Json.stringAt(deployment, "id"))
                 .deploymentRevision(deployment == null ? null : Json.intAt(deployment, "revision", null))
-                .prompt(Json.stringAt(body, "prompt"))
+                .prompt(Json.stringAt(body, "template"))
                 .promptNames(prompts)
                 .model(Json.stringAt(body, "model"))
                 .modelId(Json.stringAt(body, "model_id"))
@@ -212,16 +212,16 @@ final class ResolveClient {
             return UseCaseException.of(
                     UseCaseException.Reason.UNRESOLVED, key == null ? requestedKey : key);
         }
-        if ("unknown_prompt".equals(reason)) {
+        if ("unknown_template".equals(reason)) {
             List<String> available = new ArrayList<>();
-            List<Object> raw = Json.listAt(safeDetails, "prompt_names");
+            List<Object> raw = Json.listAt(safeDetails, "template_names");
             if (raw != null) {
                 raw.forEach(name -> available.add(String.valueOf(name)));
             }
             String key = Json.stringAt(safeDetails, "key");
             return UseCaseException.unknownPrompt(
                     key == null ? requestedKey : key,
-                    Json.stringAt(safeDetails, "prompt"),
+                    Json.stringAt(safeDetails, "template"),
                     available);
         }
         if ("not_found".equals(code) && safeDetails.containsKey("key")) {

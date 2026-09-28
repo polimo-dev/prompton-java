@@ -2,13 +2,13 @@ package dev.polimo.prompton;
 
 import java.util.Locale;
 
-/** Where the use-case document behind a use case came from. Reported as {@code source}. */
+/** Where the prompt document behind a prompt came from. Reported as {@code source}. */
 public enum Source {
     /** Fetched from PromptOn. */
     REMOTE("remote"),
     /** Read from the local disk cache. */
     DISK("disk"),
-    /** Read from the use-case document bundled into the application. */
+    /** Read from the prompt document bundled into the application. */
     BUNDLE("bundle"),
     /** Installed by the application itself, for example in tests. */
     MANUAL("manual");

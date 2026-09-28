@@ -90,7 +90,7 @@ class LogRecordConformanceTest {
                         "field " + key);
             }
         });
-        assertEquals(Map.of("name", "prompton-java", "version", "0.4.0"), actual.get("sdk"));
+        assertEquals(Map.of("name", "prompton-java", "version", "0.4.1"), actual.get("sdk"));
         assertTrue(UuidV7.isUuidV7(Json.stringAt(actual, "id")));
         assertNotNull(actual.get("latency_ms"));
 
@@ -148,9 +148,9 @@ class LogRecordConformanceTest {
         throw new IllegalStateException("no golden record named " + name);
     }
 
-    /** The use-case document the golden records were produced from, as {@code use_case.json} records it. */
+    /** The prompt document the golden records were produced from, as {@code prompt.json} records it. */
     private static String goldenDocument() {
-        Map<String, Object> useCaseContract = Conformance.load("use_case.json");
+        Map<String, Object> useCaseContract = Conformance.load("prompt.json");
         return Json.write(Json.mapAt(Json.mapAt(useCaseContract, "documents"), "production"));
     }
 }

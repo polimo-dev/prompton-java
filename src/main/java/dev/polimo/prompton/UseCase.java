@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What to use for one call: the use-case document-backed configuration for a use case, prompt name and
+ * What to use for one call: the prompt document-backed configuration for a prompt, prompt name and
  * environment.
  *
  * <p>The app sends {@link #model()} with {@link #params()} and
@@ -80,7 +80,7 @@ public final class UseCase {
                 : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(map));
     }
 
-    /** The use case key. */
+    /** The prompt key. */
     public String key() {
         return key;
     }
@@ -100,7 +100,7 @@ public final class UseCase {
         return deploymentRevision;
     }
 
-    /** The prompt name that was selected, or {@code null} for an embedding use case. */
+    /** The prompt name that was selected, or {@code null} for an embedding prompt. */
     public String prompt() {
         return prompt;
     }
@@ -135,7 +135,7 @@ public final class UseCase {
         return providerOptions;
     }
 
-    /** The id of the pinned prompt version, or {@code null} for an embedding use case. */
+    /** The id of the pinned prompt version, or {@code null} for an embedding prompt. */
     public String promptVersionId() {
         return promptVersionId;
     }
@@ -150,47 +150,47 @@ public final class UseCase {
         return engine;
     }
 
-    /** The raw chat template, or {@code null} unless this is a chat use case. */
+    /** The raw chat template, or {@code null} unless this is a chat prompt. */
     public List<Message> messages() {
         return messages;
     }
 
     /**
-     * Renders this chat use case's messages with the variables for one call.
+     * Renders this chat prompt's messages with the variables for one call.
      *
-     * @throws PromptOnException when this is not a chat use case
+     * @throws PromptOnException when this is not a chat prompt
      * @throws TemplateException when a required variable is missing
      */
     public List<Message> messages(Map<String, Object> variables) {
         if (kind != UseCaseKind.CHAT || messages == null) {
             throw new PromptOnException(
-                    "use case " + key + " is of kind "
+                    "prompt " + key + " is of kind "
                             + kind.wireName() + " and has no chat template");
         }
         return Template.renderMessages(messages, variables, engine);
     }
 
-    /** The raw text template, or {@code null} unless this is a text use case. */
+    /** The raw text template, or {@code null} unless this is a text prompt. */
     public String textTemplate() {
         return textTemplate;
     }
 
     /**
-     * Renders this text use case's prompt with the variables for one call.
+     * Renders this text prompt's prompt with the variables for one call.
      *
-     * @throws PromptOnException when this is not a text use case
+     * @throws PromptOnException when this is not a text prompt
      * @throws TemplateException when a required variable is missing
      */
     public String text(Map<String, Object> variables) {
         if (kind != UseCaseKind.TEXT || textTemplate == null) {
             throw new PromptOnException(
-                    "use case " + key + " is of kind "
+                    "prompt " + key + " is of kind "
                             + kind.wireName() + " and has no text template");
         }
         return Template.render(textTemplate, variables, engine);
     }
 
-    /** The use case's declared input variables. */
+    /** The prompt's declared input variables. */
     public List<Map<String, Object>> inputSchema() {
         return inputSchema;
     }
@@ -200,18 +200,18 @@ public final class UseCase {
         return payloadPolicy;
     }
 
-    /** Where the use-case document behind this use case came from. */
+    /** Where the prompt document behind this prompt came from. */
     public Source source() {
         return source;
     }
 
-    /** The ETag of that use-case document, when there is one. */
+    /** The ETag of that prompt document, when there is one. */
     public String etag() {
         return etag;
     }
 
     /**
-     * Anything the use-case document referenced but did not contain. A healthy server never emits such a
+     * Anything the prompt document referenced but did not contain. A healthy server never emits such a
      * document; loading still succeeds, with the corresponding fields {@code null}.
      */
     public List<String> warnings() {
@@ -219,7 +219,7 @@ public final class UseCase {
     }
 
     /**
-     * Times a provider call for this use case, queues a monitoring log, and returns the provider
+     * Times a provider call for this prompt, queues a monitoring log, and returns the provider
      * value.
      *
      * @throws Exception whatever the provider call threw
@@ -238,7 +238,7 @@ public final class UseCase {
     private void requireClient() {
         if (client == null) {
             throw new PromptOnException(
-                    "this use case is not attached to a PromptOn client; get it from PromptOn.useCase()");
+                    "this prompt is not attached to a PromptOn client; get it from PromptOn.useCase()");
         }
     }
 
@@ -305,7 +305,7 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the use case key */
+        /** @param value the prompt key */
         public Builder key(String value) {
             this.key = value;
             return this;
@@ -401,7 +401,7 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the use case's input schema */
+        /** @param value the prompt's input schema */
         public Builder inputSchema(List<Map<String, Object>> value) {
             this.inputSchema = value == null ? List.of() : value;
             return this;
@@ -413,25 +413,25 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value where the use-case document came from */
+        /** @param value where the prompt document came from */
         public Builder source(Source value) {
             this.source = value == null ? Source.MANUAL : value;
             return this;
         }
 
-        /** @param value the use-case document ETag */
+        /** @param value the prompt document ETag */
         public Builder etag(String value) {
             this.etag = value;
             return this;
         }
 
-        /** @param value decoding or use-case loading warnings */
+        /** @param value decoding or prompt loading warnings */
         public Builder warnings(List<String> value) {
             this.warnings = value == null ? List.of() : value;
             return this;
         }
 
-        /** Builds the use case. */
+        /** Builds the prompt. */
         public UseCase build() {
             return new UseCase(this);
         }

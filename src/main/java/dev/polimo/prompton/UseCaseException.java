@@ -3,8 +3,8 @@ package dev.polimo.prompton;
 import java.util.List;
 
 /**
- * UseCase failed: the use case, its deployment or the requested prompt name is not in the
- * use-case document — or there is no use-case document at all.
+ * UseCase failed: the prompt, its deployment or the requested prompt name is not in the
+ * prompt document — or there is no prompt document at all.
  *
  * <p>None of these is a signal to fall back to a hard-coded prompt. {@link Reason#UNRESOLVED} and
  * {@link Reason#UNKNOWN_PROMPT} are bugs in the deployment or in the call; fail the provider call
@@ -12,16 +12,16 @@ import java.util.List;
  */
 public class UseCaseException extends PromptOnException {
 
-    /** Why use-case loading failed. */
+    /** Why prompt loading failed. */
     public enum Reason {
-        /** No use-case document at all: PromptOn is unreachable and nothing is cached on disk or bundled. */
+        /** No prompt document at all: PromptOn is unreachable and nothing is cached on disk or bundled. */
         NOT_READY("not_ready"),
-        /** The use-case document has no use case with that key. */
-        UNKNOWN_USE_CASE("unknown_use_case"),
-        /** The use case exists but has no live deployment in this environment. */
+        /** The prompt document has no prompt with that key. */
+        UNKNOWN_USE_CASE("unknown_prompt"),
+        /** The prompt exists but has no live deployment in this environment. */
         UNRESOLVED("unresolved"),
         /** The live deployment pins no prompt version under the requested name. */
-        UNKNOWN_PROMPT("unknown_prompt");
+        UNKNOWN_PROMPT("unknown_template");
 
         private final String wireName;
 
@@ -52,11 +52,11 @@ public class UseCaseException extends PromptOnException {
     /** Creates an exception for {@code reason} on {@code useCase}. */
     public static UseCaseException of(Reason reason, String key) {
         return new UseCaseException(reason, key, null, List.of(), switch (reason) {
-            case NOT_READY -> "PromptOn is unreachable and no use-case document is cached in memory, "
-                    + "on disk or in a bundle; no use case can be loaded yet";
-            case UNKNOWN_USE_CASE -> "unknown use case: " + key;
-            case UNRESOLVED -> "use case " + key + " has no live deployment in this environment";
-            case UNKNOWN_PROMPT -> "unknown prompt for use case " + key;
+            case NOT_READY -> "PromptOn is unreachable and no prompt document is cached in memory, "
+                    + "on disk or in a bundle; no prompt can be loaded yet";
+            case UNKNOWN_USE_CASE -> "unknown prompt: " + key;
+            case UNRESOLVED -> "prompt " + key + " has no live deployment in this environment";
+            case UNKNOWN_PROMPT -> "unknown prompt for prompt " + key;
         });
     }
 
@@ -72,12 +72,12 @@ public class UseCaseException extends PromptOnException {
                         + "\" — prompt names: " + String.join(", ", promptNames));
     }
 
-    /** Why use-case loading failed. */
+    /** Why prompt loading failed. */
     public Reason reason() {
         return reason;
     }
 
-    /** The use case key that was resolved. */
+    /** The prompt key that was resolved. */
     public String key() {
         return key;
     }

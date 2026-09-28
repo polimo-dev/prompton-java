@@ -16,11 +16,11 @@ class PromptOnConfigTest {
     @Test
     void anExplicitOptionBeatsTheEnvironmentAndTheDefault() {
         PromptOnConfig config = PromptOnConfig.builder()
-                .host("https://prompton.example")
+                .host("https://renderon.example")
                 .environment("staging")
                 .apiKey("ptn_myproject_secret")
                 .build();
-        assertEquals("https://prompton.example/api/v1", config.baseUrl());
+        assertEquals("https://renderon.example/api/v1", config.baseUrl());
         assertEquals("staging", config.environment());
         assertEquals("ptn_myproject_secret", config.apiKey());
     }
@@ -44,7 +44,7 @@ class PromptOnConfigTest {
         assertEquals(10_000, config.logMaxBuffer());
         assertEquals(Mode.LIVE, config.mode());
         assertEquals(PayloadPolicy.DEFAULT, config.payloadDefaults());
-        assertEquals("prompton-java/0.4.0", config.userAgent());
+        assertEquals("prompton-java/0.4.1", config.userAgent());
         if (System.getenv("PTN_HOST") == null) {
             assertEquals("https://app.prompton.ai/api/v1", config.baseUrl());
         }
@@ -73,7 +73,7 @@ class PromptOnConfigTest {
                 .environment("staging")
                 .build();
         Path path = config.diskCachePath();
-        assertTrue(path.toString().endsWith("use-cases-heydiary-staging.json"), path.toString());
+        assertTrue(path.toString().endsWith("prompts-heydiary-staging.json"), path.toString());
         assertTrue(path.getParent().toString().endsWith("prompton"), path.toString());
     }
 
@@ -97,9 +97,9 @@ class PromptOnConfigTest {
         assertEquals("http://two.example/api/v1", staging.baseUrl());
         assertEquals("production", production.environment());
         assertEquals("staging", staging.environment());
-        assertTrue(production.diskCachePath().toString().endsWith("use-cases-alpha-production.json"),
+        assertTrue(production.diskCachePath().toString().endsWith("prompts-alpha-production.json"),
                 String.valueOf(production.diskCachePath()));
-        assertTrue(staging.diskCachePath().toString().endsWith("use-cases-alpha-staging.json"),
+        assertTrue(staging.diskCachePath().toString().endsWith("prompts-alpha-staging.json"),
                 String.valueOf(staging.diskCachePath()));
         assertNotSame(production.httpClient(), staging.httpClient(),
                 "two configurations must not share one HTTP client with confused ownership");

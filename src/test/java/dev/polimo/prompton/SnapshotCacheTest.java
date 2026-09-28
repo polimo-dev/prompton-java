@@ -62,7 +62,7 @@ class SnapshotCacheTest {
             for (int i = 0; i < 25; i++) {
                 assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
             }
-            assertEquals(1, server.requests("/use-cases").size(),
+            assertEquals(1, server.requests("/renders").size(),
                     "one fetch on start, and nothing else within the TTL");
         }
     }
@@ -140,7 +140,7 @@ class SnapshotCacheTest {
                 .withHeader("etag", "\"v1\""));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(200)).build())) {
             prompton.useCase("greeting");
-            assertEquals(1, server.requests("/use-cases").size());
+            assertEquals(1, server.requests("/renders").size());
             Thread.sleep(250);
 
             int threads = 32;
@@ -168,7 +168,7 @@ class SnapshotCacheTest {
                 pool.shutdownNow();
             }
             Thread.sleep(50);
-            assertEquals(2, server.requests("/use-cases").size(),
+            assertEquals(2, server.requests("/renders").size(),
                     "3200 resolves on one expired TTL are one refresh, not one fetch per caller");
         }
     }
@@ -308,7 +308,7 @@ class SnapshotCacheTest {
 
     @Test
     void withNoDiskCacheItResolvesFromTheBundle() {
-        Path bundle = tempDir.resolve("bundle").resolve("use-cases.production.json");
+        Path bundle = tempDir.resolve("bundle").resolve("prompts.production.json");
         assertTrue(DiskCache.write(bundle, Fixtures.production(),
                 Map.of("environment", "production", "project", "sdkfixture")));
         server.close();
@@ -372,42 +372,42 @@ class SnapshotCacheTest {
     @Test
     void aMissingSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"use_cases\": {}, \"deployments\": {}}"));
+                UseCaseDocument.parse("{\"prompts\": {}, \"deployments\": {}}"));
         assertTrue(e.getMessage().contains("missing schema_version"));
     }
 
     @Test
     void aLegacyVersionOnlyDocumentIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"version\": 4, \"use_cases\": {}, \"deployments\": {}}"));
+                UseCaseDocument.parse("{\"version\": 4, \"prompts\": {}, \"deployments\": {}}"));
         assertTrue(e.getMessage().contains("missing schema_version"));
     }
 
     @Test
     void aStringSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"schema_version\": \"4\", \"use_cases\": {}}"));
+                UseCaseDocument.parse("{\"schema_version\": \"4\", \"prompts\": {}}"));
         assertTrue(e.getMessage().contains("schema_version must be the JSON integer 7"));
     }
 
     @Test
     void aFractionalSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"schema_version\": 4.0, \"use_cases\": {}}"));
+                UseCaseDocument.parse("{\"schema_version\": 4.0, \"prompts\": {}}"));
         assertTrue(e.getMessage().contains("schema_version must be the JSON integer 7"));
     }
 
     @Test
     void schemaVersionThreeIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"schema_version\": 3, \"use_cases\": {}}"));
+                UseCaseDocument.parse("{\"schema_version\": 3, \"prompts\": {}}"));
         assertTrue(e.getMessage().contains("schema_version 3"));
     }
 
     @Test
     void aNewerSchemaVersionIsRefused() {
         PromptOnException e = assertThrows(PromptOnException.class, () ->
-                UseCaseDocument.parse("{\"schema_version\": 8, \"use_cases\": {}}"));
+                UseCaseDocument.parse("{\"schema_version\": 8, \"prompts\": {}}"));
         assertTrue(e.getMessage().contains("schema_version 8"));
     }
 
@@ -421,7 +421,7 @@ class SnapshotCacheTest {
             UseCaseException e = assertThrows(
                     UseCaseException.class, () -> prompton.useCase("greeting"));
             assertEquals(UseCaseException.Reason.NOT_READY, e.reason());
-            assertTrue(e.getMessage().contains("no use-case document is cached"));
+            assertTrue(e.getMessage().contains("no prompt document is cached"));
         }
     }
 
@@ -462,7 +462,7 @@ class SnapshotCacheTest {
     void exportWritesTheDocumentAndItsSidecarForBundling() {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production())
                 .withHeader("etag", "\"sha256-v1\""));
-        Path out = tempDir.resolve("dist").resolve("use-cases.production.json");
+        Path out = tempDir.resolve("dist").resolve("prompts.production.json");
         try (PromptOn prompton = PromptOn.create(config().build())) {
             prompton.useCase("greeting");
             prompton.exportUseCaseDocument(out);

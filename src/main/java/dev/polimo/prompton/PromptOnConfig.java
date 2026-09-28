@@ -16,7 +16,7 @@ import java.util.function.UnaryOperator;
  * {@code PTN_ENVIRONMENT} and {@code PTN_PROJECT}.
  *
  * <p>Without an API key the SDK makes no remote calls at all: it loads from the disk cache or
- * the bundled use-case document and says so once in a log line.
+ * the bundled prompt document and says so once in a log line.
  */
 public final class PromptOnConfig {
 
@@ -30,7 +30,7 @@ public final class PromptOnConfig {
     public static final String SDK_NAME = "prompton-java";
 
     /** The SDK's version. */
-    public static final String SDK_VERSION = "0.4.0";
+    public static final String SDK_VERSION = "0.4.1";
 
     private final String apiKey;
     private final String baseUrl;
@@ -117,12 +117,12 @@ public final class PromptOnConfig {
         return environment;
     }
 
-    /** The project slug, used to name the disk cache and to guard against a foreign use-case document. */
+    /** The project slug, used to name the disk cache and to guard against a foreign prompt document. */
     public String project() {
         return project;
     }
 
-    /** How long a use-case document is served from memory before a refresh is due. */
+    /** How long a prompt document is served from memory before a refresh is due. */
     public Duration cacheTtl() {
         return cacheTtl;
     }
@@ -137,7 +137,7 @@ public final class PromptOnConfig {
         return connectTimeout;
     }
 
-    /** How long the first {@code useCase} waits for the very first use-case document fetch. */
+    /** How long the first {@code useCase} waits for the very first prompt document fetch. */
     public Duration initialFetchTimeout() {
         return initialFetchTimeout;
     }
@@ -147,12 +147,12 @@ public final class PromptOnConfig {
         return maxBackoff;
     }
 
-    /** Where the use-case document is mirrored on disk, or {@code null} when the disk cache is off. */
+    /** Where the prompt document is mirrored on disk, or {@code null} when the disk cache is off. */
     public Path diskCachePath() {
         return diskCachePath;
     }
 
-    /** The use-case document shipped inside the application, or {@code null}. */
+    /** The prompt document shipped inside the application, or {@code null}. */
     public Path bundlePath() {
         return bundlePath;
     }
@@ -202,7 +202,7 @@ public final class PromptOnConfig {
         return shutdownFlushTimeout;
     }
 
-    /** Whether the background poll loop runs. Off means refreshes happen on the next use-case read. */
+    /** Whether the background poll loop runs. Off means refreshes happen on the next prompt read. */
     public boolean pollingEnabled() {
         return pollingEnabled;
     }
@@ -212,7 +212,7 @@ public final class PromptOnConfig {
         return httpClient;
     }
 
-    /** The payload policy used when the use-case document declares none. */
+    /** The payload policy used when the prompt document declares none. */
     public PayloadPolicy payloadDefaults() {
         return payloadDefaults;
     }
@@ -292,7 +292,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value how long a use-case document is served from memory before a refresh is due */
+        /** @param value how long a prompt document is served from memory before a refresh is due */
         public Builder cacheTtl(Duration value) {
             this.cacheTtl = value;
             return this;
@@ -322,7 +322,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value where to mirror the use-case document on disk */
+        /** @param value where to mirror the prompt document on disk */
         public Builder diskCachePath(Path value) {
             this.diskCachePath = value;
             this.diskCacheEnabled = value != null;
@@ -335,7 +335,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value a use-case document shipped inside the application */
+        /** @param value a prompt document shipped inside the application */
         public Builder bundlePath(Path value) {
             this.bundlePath = value;
             return this;
@@ -395,7 +395,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value {@code false} to refresh on the next use-case read instead of on a timer */
+        /** @param value {@code false} to refresh on the next prompt read instead of on a timer */
         public Builder pollingEnabled(boolean value) {
             this.pollingEnabled = value;
             return this;
@@ -407,7 +407,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value the payload policy used when the use-case document declares none */
+        /** @param value the payload policy used when the prompt document declares none */
         public Builder payloadDefaults(PayloadPolicy value) {
             this.payloadDefaults = value == null ? PayloadPolicy.DEFAULT : value;
             return this;
@@ -467,11 +467,11 @@ public final class PromptOnConfig {
         return end > 4 ? apiKey.substring(4, end) : null;
     }
 
-    /** {@code <os cache dir>/prompton/use-cases-<project>-<environment>.json}. */
+    /** {@code <os cache dir>/renderon/renders-<project>-<environment>.json}. */
     static Path defaultDiskCachePath(String project, String environment) {
         String slug = sanitize(project == null ? "default" : project)
                 + "-" + sanitize(environment == null ? DEFAULT_ENVIRONMENT : environment);
-        return osCacheDirectory().resolve("prompton").resolve("use-cases-" + slug + ".json");
+        return osCacheDirectory().resolve("prompton").resolve("prompts-" + slug + ".json");
     }
 
     private static Path osCacheDirectory() {

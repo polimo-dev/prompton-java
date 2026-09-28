@@ -3,12 +3,12 @@
 The official [PromptOn](https://app.prompton.ai) SDK for Java 17+.
 
 PromptOn is a control plane for the prompts and models your app uses. Every place your code calls an
-LLM becomes a **use case**, and for each use case and environment PromptOn holds one configuration: a
+LLM becomes a **prompt**, and for each prompt and environment PromptOn holds one configuration: a
 prompt version, one model, and its parameters. Your app fetches that configuration and then calls the
 provider itself, with your own provider key and your own HTTP client — PromptOn is **config-fetch,
 not a proxy**, so it is never in the request path and never sees your key. After each call your app
 sends back a **monitoring log**, and those logs are how you see cost, latency, error rate and stop
-reasons per use case.
+reasons per prompt.
 
 This SDK does four things and nothing else:
 
@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.4.0")
+    implementation("dev.polimo:prompton-sdk:0.4.1")
 }
 ```
 
@@ -49,7 +49,7 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.4.0</version>
+  <version>0.4.1</version>
 </dependency>
 ```
 
@@ -93,14 +93,14 @@ Precedence is **explicit option > environment variable > default**.
 | `baseUrl` | — | `host + "/api/v1"` | Set it when your API base is not under the host root |
 | `environment` | `PTN_ENVIRONMENT` | `production` | Sent as `?environment=`, and the guard that stops a staging process booting on a production document |
 | `project` | `PTN_PROJECT` | read out of the API key | Names the disk cache, and guards against another project's document |
-| `cacheTtl` | — | 10 s | How long a use-case document is served from memory before a refresh is due; also the base of the poll backoff |
+| `cacheTtl` | — | 10 s | How long a prompt document is served from memory before a refresh is due; also the base of the poll backoff |
 | `requestTimeout` | — | 5 s | Read timeout for PromptOn's own calls |
 | `connectTimeout` | — | 5 s | Connect timeout of the default HTTP client |
 | `initialFetchTimeout` | — | 3 s | How long the very first `useCase` waits when nothing is cached yet |
 | `maxBackoff` | — | 5 min | Ceiling of every exponential backoff |
-| `diskCachePath` | — | OS cache dir, `prompton/use-cases-<project>-<environment>.json` | Where the use-case document is mirrored |
+| `diskCachePath` | — | OS cache dir, `prompton/prompts-<project>-<environment>.json` | Where the prompt document is mirrored |
 | `diskCacheEnabled` | — | `true` | `false` keeps the SDK entirely in memory |
-| `bundlePath` | — | none | A use-case document shipped inside your application, used when memory and disk are empty |
+| `bundlePath` | — | none | A prompt document shipped inside your application, used when memory and disk are empty |
 | `mode` | — | `LIVE` | `TEST` captures logs and makes no HTTP call; `OFFLINE` loads from disk or bundle only and, like a missing key, counts and drops monitoring logs |
 | `hashEndUser` | — | `false` | Send `sha256(end_user_ref)` instead of the raw reference |
 | `redact` | — | none | `UnaryOperator<Map<String, Object>>` applied to every record last |
@@ -112,20 +112,20 @@ Precedence is **explicit option > environment variable > default**.
 | `shutdownFlushTimeout` | — | 5 s | How long `close()` spends draining |
 | `pollingEnabled` | — | `true` | `false` refreshes on the next `useCase` instead of on a timer — for serverless |
 | `httpClient` | — | `JdkHttpClient` | Route PromptOn's own calls through your own HTTP stack |
-| `payloadDefaults` | — | full, no sampling, 256 KiB | The payload policy used when the use-case document declares none |
+| `payloadDefaults` | — | full, no sampling, 256 KiB | The payload policy used when the prompt document declares none |
 
 ```java
 PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
         .apiKey(System.getenv("PTN_API_KEY"))
         .environment("staging")
-        .bundlePath(Path.of("/app/resources/use-cases.staging.json"))
+        .bundlePath(Path.of("/app/resources/prompts.staging.json"))
         .redact(record -> { record.remove("end_user_ref"); return record; })
         .build());
 ```
 
 ## Resolving and rendering
 
-`useCase` reads the use-case document in memory: no HTTP call, no lock, no blocking.
+`useCase` reads the prompt document in memory: no HTTP call, no lock, no blocking.
 
 ```java
 UseCase useCase = prompton.useCase("support_reply");      // the "default" prompt
@@ -137,9 +137,9 @@ A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId(
 `deploymentRevision()`, `prompt()`, `promptNames()`, `model()` (the provider string to send),
 `modelId()` (the catalog UUID), `provider()`, `params()`, `providerOptions()`,
 `promptVersionId()`, `promptVersionNumber()`, and the raw template as `messages()` (chat) or
-`textTemplate()` (text). An embedding use case has neither.
+`textTemplate()` (text). An embedding prompt has neither.
 
-Rendering is a separate step, because a use case is reusable across calls and the variables are
+Rendering is a separate step, because a prompt is reusable across calls and the variables are
 not:
 
 ```java
@@ -161,8 +161,8 @@ UseCase useCase = prompton.useCaseRemote("support_reply", null);        // cache
 UseCase rendered = prompton.useCaseRemote("support_reply", null, vars); // server renders
 ```
 
-Never call `useCaseRemote` once per request in a hot loop; that is what the use-case document cache is for. It
-follows the same rules as the use-case document store when PromptOn pushes back: after a `429` the endpoint is
+Never call `useCaseRemote` once per request in a hot loop; that is what the prompt document cache is for. It
+follows the same rules as the prompt document store when PromptOn pushes back: after a `429` the endpoint is
 left alone until `Retry-After` has elapsed, a 5xx or an unreachable server backs off the same way,
 and while the pause is in force the cached answer is served instead of a request.
 
@@ -210,7 +210,7 @@ prompton.log(LogRecord.builder()
 | `id` | UUIDv7, the idempotency key. The SDK issues one; a resend is counted as a duplicate, never stored twice |
 | `use_case`, `model`, `status`, `started_at` | Required. `status` is `ok` or `error`; `started_at` must be within 5 minutes ahead and 7 days behind |
 | `kind` | `chat`, `text` or `embedding` |
-| `deployment_id`, `deployment_revision`, `prompt`, `prompt_version_id`, `model_id` | The use-case evidence, filled from the `UseCase` |
+| `deployment_id`, `deployment_revision`, `prompt`, `prompt_version_id`, `model_id` | The prompt evidence, filled from the `UseCase` |
 | `source` | `remote`, `disk`, `bundle` or `manual` — which tier answered |
 | `provider`, `model_used`, `upstream_provider` | Who actually served the call |
 | `params` | What was sent. The server blanks it over 4 KB rather than rejecting the record |
@@ -221,7 +221,7 @@ prompton.log(LogRecord.builder()
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.4.0"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.4.1"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 
@@ -230,7 +230,7 @@ Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_
 Records are queued and sent in batches on a size, byte or time trigger — never one HTTP call per
 log, and never blocking your provider call. A batch carries at most 200 records and under
 5 MB, and one batch covers one environment because `?environment=` applies to the whole request.
-Before a record is queued the SDK applies the use case's payload policy from the use-case document: sampling
+Before a record is queued the SDK applies the prompt's payload policy from the prompt document: sampling
 (errors and length truncations are always kept), truncation to the caps the server re-checks,
 `hash`/`none` modes, then `hashEndUser`, then your `redact` hook last.
 
@@ -248,11 +248,11 @@ This is the part that matters when PromptOn has a bad day.
 
 **Three tiers, consulted in this order.** Memory always; then the disk cache, which is on by default
 and written atomically (temporary file, then rename) with a sidecar holding the ETag and
-`Last-Modified`; then an optional use-case document bundled into your application. Whichever answered is
+`Last-Modified`; then an optional prompt document bundled into your application. Whichever answered is
 reported as `source`.
 
 **A ten-second cache.** Within the TTL every `useCase` call is served from memory with no HTTP call at
-all. Once it has passed the SDK refreshes in the background with `GET /use-cases` and
+all. Once it has passed the SDK refreshes in the background with `GET /prompts` and
 `If-None-Match`, where a `304` means there is nothing to parse. A refresh never blocks a provider call
 and never fails one: while it is in flight, and if it fails, the previous document keeps serving.
 
@@ -269,7 +269,7 @@ cache and no bundle, that `useCase` call fails — there is nothing to answer wi
 permanent: once the backoff has elapsed the next `useCase` call attempts a fresh fetch and the process
 recovers by itself, with polling on or off.
 
-**Never the wrong document.** A use-case document whose `environment` or `project` does not match this
+**Never the wrong document.** A prompt document whose `environment` or `project` does not match this
 process is ignored, wherever it came from — so a staging build cannot boot on a production bundle.
 A schema version older than 4 is refused and the SDK keeps polling for one it understands. A corrupt
 or half-written file is ignored rather than fatal, which is what makes it safe for several processes
@@ -287,7 +287,7 @@ environment:
 try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
         .apiKey(System.getenv("PTN_API_KEY")).environment("production").build())) {
     prompton.refresh();
-    prompton.exportUseCaseDocument(Path.of("src/main/resources/use-cases.production.json"));
+    prompton.exportUseCaseDocument(Path.of("src/main/resources/prompts.production.json"));
 }
 ```
 
@@ -310,7 +310,7 @@ network cut — and confirm provider calls still happen. `useCaseDocumentInfo()`
 
 ```java
 UseCaseDocumentInfo info = prompton.useCaseDocumentInfo();
-log.info("prompton use-case document: source={} age={}s stale={} etag={}",
+log.info("prompton prompt document: source={} age={}s stale={} etag={}",
         info.source(), info.ageSeconds(), info.stale(), info.etag());
 ```
 
@@ -322,8 +322,8 @@ log.info("prompton use-case document: source={} age={}s stale={} etag={}",
 | PromptOn answers `429` | Waits out `Retry-After` before contacting the server again | Nothing |
 | PromptOn is unreachable and memory, disk and bundle are all empty | — | `UseCaseException` with reason `NOT_READY` and a message saying PromptOn is unreachable and nothing is cached |
 | The disk cache or the bundle is corrupt, truncated, or for another environment or project | Ignores it and falls through to the next tier | Nothing, unless no tier is left |
-| The use-case document has no such use case | — | `UseCaseException`, reason `UNKNOWN_USE_CASE` |
-| The use case has no live deployment in this environment | — | `UseCaseException`, reason `UNRESOLVED`. A bug in the deployment — never a reason to fall back to a hard-coded prompt |
+| The prompt document has no such prompt | — | `UseCaseException`, reason `UNKNOWN_USE_CASE` |
+| The prompt has no live deployment in this environment | — | `UseCaseException`, reason `UNRESOLVED`. A bug in the deployment — never a reason to fall back to a hard-coded prompt |
 | The live deployment pins no prompt of that name | — | `UseCaseException`, reason `UNKNOWN_PROMPT`, listing `promptNames()`. There is no silent fall back to `default` |
 | A template needs a variable the call did not supply | — | `TemplateException`, kind `MISSING_VARIABLE`, naming the variable |
 | A monitoring-log batch gets `429` or any 5xx | Resends the same batch with the same ids, honouring `Retry-After`, else doubling from 1 s to 5 min, up to `logMaxAttempts` | Nothing. `logStats().droppedFailed()` counts what was finally given up on |
@@ -343,7 +343,7 @@ The rule behind the table: **a provider call must never fail because PromptOn di
 
 ```java
 PromptOn prompton = PromptOn.create(PromptOnConfig.builder().mode(Mode.TEST).build());
-prompton.putUseCaseDocument(Files.readString(Path.of("src/test/resources/use-cases.production.json")));
+prompton.putUseCaseDocument(Files.readString(Path.of("src/test/resources/prompts.production.json")));
 
 myService.reply("why is the sky blue?");
 
@@ -360,9 +360,9 @@ the records are what you are asserting on, use `Mode.TEST`.
 ## Conformance
 
 `src/test/resources/conformance/` is a copy of the cross-language contract every PromptOn SDK
-reproduces: template rendering, use-case loading, monitoring-log truncation, `stop_kind` normalisation and
+reproduces: template rendering, prompt loading, monitoring-log truncation, `stop_kind` normalisation and
 golden records. The test suite executes every case in those files, so this SDK renders a prompt,
-loads a use case and truncates a payload byte for byte the way the Elixir reference implementation and
+loads a prompt and truncates a payload byte for byte the way the Elixir reference implementation and
 the PromptOn server do.
 
 ```sh
@@ -370,8 +370,8 @@ the PromptOn server do.
 PTN_HOST=http://localhost:4000 PTN_API_KEY=ptn_... ./gradlew test   # adds the live contract test
 ```
 
-The live test (`LiveFixtureIT`) is skipped unless `PTN_API_KEY` is set. It checks the use-case document fetch
-and the `304` on repoll, that local use-case rendering matches the server's `POST /use-cases/{key}/prompt` field for field,
+The live test (`LiveFixtureIT`) is skipped unless `PTN_API_KEY` is set. It checks the prompt document fetch
+and the `304` on repoll, that local prompt rendering matches the server's `POST /prompts/{key}/render` field for field,
 the error cases, and that a `/logs` batch is accepted once and counted as duplicates on
 resend.
 

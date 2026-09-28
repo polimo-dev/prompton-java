@@ -5,14 +5,14 @@ final class Fixtures {
 
     private Fixtures() {}
 
-    /** A production use-case document with a chat, a text and an embedding use case. */
+    /** A production prompt document with a chat, a text and an embedding prompt. */
     static String useCaseDocument(String environment, String project, String greetingSystemPrompt) {
         return """
             {
               "schema_version": 4,
               "project": "__PROJECT__",
               "environment": "__ENVIRONMENT__",
-              "use_cases": {
+              "prompts": {
                 "greeting": {
                   "id": "0198f2a1-0000-7000-8000-00000000c001",
                   "kind": "chat",
@@ -49,7 +49,7 @@ final class Fixtures {
                   "model_id": "0198f2a1-0000-7000-8000-00000000e001",
                   "params": {"temperature": 0.2},
                   "provider_options": {"allow_fallbacks": true},
-                  "prompt_pins": {
+                  "template_pins": {
                     "default": "0198f2a1-0000-7000-8000-00000000a001",
                     "ko": "0198f2a1-0000-7000-8000-00000000a002"
                   }
@@ -60,7 +60,7 @@ final class Fixtures {
                   "model_id": "0198f2a1-0000-7000-8000-00000000e001",
                   "params": {},
                   "provider_options": {},
-                  "prompt_pins": {"default": "0198f2a1-0000-7000-8000-00000000a003"}
+                  "template_pins": {"default": "0198f2a1-0000-7000-8000-00000000a003"}
                 },
                 "embed": {
                   "id": "0198f2a1-0000-7000-8000-00000000d003",
@@ -68,7 +68,7 @@ final class Fixtures {
                   "model_id": "0198f2a1-0000-7000-8000-00000000e002",
                   "params": {},
                   "provider_options": {},
-                  "prompt_pins": {}
+                  "template_pins": {}
                 }
               },
               "prompt_versions": {
@@ -132,12 +132,12 @@ final class Fixtures {
             .replace("__GREETING__", greetingSystemPrompt);
     }
 
-    /** The production use-case document with the default greeting. */
+    /** The production prompt document with the default greeting. */
     static String production() {
         return useCaseDocument("production", "sdkfixture", "You are a friendly greeter.");
     }
 
-    /** The production use-case document with a different greeting, so a refresh is observable. */
+    /** The production prompt document with a different greeting, so a refresh is observable. */
     static String productionV2() {
         return useCaseDocument("production", "sdkfixture", "You are a very friendly greeter.");
     }

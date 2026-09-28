@@ -2,7 +2,7 @@ package dev.polimo.prompton;
 
 import java.util.Locale;
 
-/** What shape of call a use case describes. */
+/** What shape of call a prompt describes. */
 public enum UseCaseKind {
     /** A message list. The pinned prompt version carries {@code messages}. */
     CHAT("chat"),
@@ -17,12 +17,12 @@ public enum UseCaseKind {
         this.wireName = wireName;
     }
 
-    /** The value used in the use-case document and in monitoring logs. */
+    /** The value used in the prompt document and in monitoring logs. */
     public String wireName() {
         return wireName;
     }
 
-    /** Parses a use-case document value; anything unrecognised (or {@code null}) is {@link #CHAT}. */
+    /** Parses a prompt document value; anything unrecognised (or {@code null}) is {@link #CHAT}. */
     public static UseCaseKind from(String value) {
         if (value == null) {
             return CHAT;

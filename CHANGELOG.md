@@ -4,17 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## 0.4.1
+
+Patch release correcting the SDK wire contract to the current PromptOn runtime API.
+
+### Fixed
+
+- Fetch prompt documents from `GET /api/v1/prompts` and render through `POST /api/v1/prompts/{key}/render`.
+- Decode canonical prompt documents with `prompts` and `template_pins`, and exercise `conformance/prompt.json` in the resolver tests.
+- Send the render request field as `template` and read `template` / `template_names` from render responses while keeping legacy public `UseCase` method names.
+
 ## 0.2.0
 
-Breaking vocabulary rename release. The SDK now matches the public schema-v4 use-case document,
+Breaking vocabulary rename release. The SDK now matches the public schema-v4 prompt document,
 monitoring-log and server-filled prompt vocabulary without compatibility aliases.
 
 ### Changed
 
-- Renamed the public local-loading API from resolution vocabulary to use-case vocabulary:
+- Renamed the public local-loading API from resolution vocabulary to prompt vocabulary:
   `resolve` / `resolveRemote` / `Resolution` / `ResolutionException` / `ResolutionSource` are now
   `useCase` / `useCaseRemote` / `UseCase` / `UseCaseException` / `Source`.
-- Renamed the public use-case accessors from `useCase()` and `availablePrompts()` to `key()` and
+- Renamed the public prompt accessors from `useCase()` and `availablePrompts()` to `key()` and
   `promptNames()`.
 - Renamed high-level rendering entrypoints to methods on `UseCase`: `messages(variables)` and
   `text(variables)`.
@@ -27,9 +38,9 @@ monitoring-log and server-filled prompt vocabulary without compatibility aliases
   now `UseCaseDocument` / `UseCaseDocumentInfo` / `useCaseDocumentInfo` /
   `exportUseCaseDocument` / `putUseCaseDocument` / `useCaseDocument`.
 - Renamed `RefreshOutcome` to `RefreshResult`.
-- Updated the server-filled prompt route docs and client errors to `POST /use-cases/{key}/prompt`;
+- Updated the server-filled prompt route docs and client errors to `POST /prompts/{key}/render`;
   unknown-prompt errors and conformance fixtures now use `prompt_names`.
-- Updated the bundled file name examples to `use-cases.<environment>.json`.
+- Updated the bundled file name examples to `prompts.<environment>.json`.
 
 ## 0.1.0
 

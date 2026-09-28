@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * A parsed {@code GET /use-cases} document — everything live in one environment.
+ * A parsed {@code GET /renders} document — everything live in one environment.
  *
  * <p>The SDK reads schema versions 4 through 7. The {@code schema_version} field must be a JSON
  * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}
@@ -22,9 +22,9 @@ public final class UseCaseDocument {
     public static final int SCHEMA_VERSION = 7;
 
     /**
-     * One use case: what shape of call it is and what its logs may carry.
+     * One prompt: what shape of call it is and what its logs may carry.
      *
-     * @param id the use case's UUID
+     * @param id the prompt's UUID
      * @param key the stable key one call site is known by
      * @param kind chat, text or embedding
      * @param inputSchema the variables the prompt declares
@@ -43,10 +43,10 @@ public final class UseCaseDocument {
      * One live deployment revision: the pin.
      *
      * @param id the revision's UUID
-     * @param useCaseKey the use case it pins
+     * @param useCaseKey the prompt it pins
      * @param revision the revision number, which increases on every deploy and rollback
      * @param modelId the catalog UUID of the model it pins
-     * @param params the params layered over the use case's defaults
+     * @param params the params layered over the prompt's defaults
      * @param providerOptions the provider options layered over the model's
      * @param promptPins one pinned prompt version id per prompt name; empty for an embedding
      */
@@ -128,20 +128,20 @@ public final class UseCaseDocument {
         this.warnings = List.copyOf(warnings);
     }
 
-    /** Parses a use-case document JSON body. */
+    /** Parses a prompt document JSON body. */
     public static UseCaseDocument parse(String json) {
         return fromMap(Json.parseObject(json));
     }
 
-    /** Builds a use-case document from an already-decoded body. */
+    /** Builds a prompt document from an already-decoded body. */
     @SuppressWarnings("unchecked")
     public static UseCaseDocument fromMap(Map<String, Object> doc) {
         List<String> warnings = new ArrayList<>();
         int version = readSchemaVersion(doc);
 
-        Map<String, Object> rawUseCases = Json.mapAt(doc, "use_cases");
+        Map<String, Object> rawUseCases = Json.mapAt(doc, "prompts");
         if (rawUseCases == null) {
-            throw new PromptOnException("use-case document is missing use_cases");
+            throw new PromptOnException("prompt document is missing prompts");
         }
 
         Map<String, UseCase> useCases = new LinkedHashMap<>();
@@ -205,20 +205,20 @@ public final class UseCaseDocument {
     private static int readSchemaVersion(Map<String, Object> doc) {
         Object raw = doc.get("schema_version");
         if (raw == null) {
-            throw new PromptOnException("use-case document is missing schema_version");
+            throw new PromptOnException("prompt document is missing schema_version");
         }
         if (!(raw instanceof Byte
                 || raw instanceof Short
                 || raw instanceof Integer
                 || raw instanceof Long)) {
             throw new PromptOnException(
-                    "use-case document schema_version must be the JSON integer "
+                    "prompt document schema_version must be the JSON integer "
                             + SCHEMA_VERSION);
         }
         long version = ((Number) raw).longValue();
         if (version < 4 || version > SCHEMA_VERSION) {
             throw new PromptOnException(
-                "unsupported use-case document schema_version " + version
+                "unsupported prompt document schema_version " + version
                             + "; this SDK reads version "
                             + SCHEMA_VERSION);
         }
@@ -256,7 +256,7 @@ public final class UseCaseDocument {
     private static Deployment readDeployment(
             String key, Map<String, Object> raw, List<String> warnings) {
         Map<String, String> pins = new TreeMap<>();
-        Map<String, Object> rawPins = Json.mapAt(raw, "prompt_pins");
+        Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
         if (rawPins != null) {
             rawPins.forEach((name, id) -> {
                 if (id instanceof String versionId) {
@@ -342,12 +342,12 @@ public final class UseCaseDocument {
         return environment;
     }
 
-    /** Every use case, keyed by use case key. */
+    /** Every prompt, keyed by prompt key. */
     public Map<String, UseCase> useCases() {
         return useCases;
     }
 
-    /** The live deployment per use case key. A use case with none is simply absent. */
+    /** The live deployment per prompt key. A prompt with none is simply absent. */
     public Map<String, Deployment> deployments() {
         return deployments;
     }

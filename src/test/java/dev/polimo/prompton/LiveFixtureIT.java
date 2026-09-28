@@ -87,7 +87,7 @@ class LiveFixtureIT {
 
     @Test
     void snapshotFetchAndThenA304OnRepoll() throws Exception {
-        HttpResponse first = get(BASE + "/use-cases?environment=production", Map.of());
+        HttpResponse first = get(BASE + "/renders?environment=production", Map.of());
         assertEquals(200, first.status());
         String etag = first.header("etag");
         assertNotNull(etag, "the snapshot must carry an ETag to poll with");
@@ -98,7 +98,7 @@ class LiveFixtureIT {
         assertEquals(List.of(), snapshot.warnings());
         assertTrue(snapshot.useCases().keySet().containsAll(List.of("greeting", "summarize", "embed")));
 
-        HttpResponse repoll = get(BASE + "/use-cases?environment=production",
+        HttpResponse repoll = get(BASE + "/renders?environment=production",
                 Map.of("if-none-match", etag));
         assertEquals(304, repoll.status(), "an unchanged snapshot answers 304 with no body");
         assertTrue(repoll.body() == null || repoll.body().isEmpty());
@@ -110,7 +110,7 @@ class LiveFixtureIT {
             UseCase local = client.useCase("greeting");
             List<Message> rendered = local.messages(Map.of("name", "Ada"));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/greeting/prompt",
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/renders/greeting/render",
                     "{\"variables\":{\"name\":\"Ada\"}}").body());
 
             assertUseCaseMatches(local, remote);
@@ -126,7 +126,7 @@ class LiveFixtureIT {
             UseCase local = client.useCase("greeting", "ko");
             List<Message> rendered = local.messages(Map.of("name", "Ada"));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/greeting/prompt",
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/renders/greeting/render",
                     "{\"prompt\":\"ko\",\"variables\":{\"name\":\"Ada\"}}")
                     .body());
 
@@ -143,7 +143,7 @@ class LiveFixtureIT {
             UseCase local = client.useCase("summarize");
             String rendered = local.text(Map.of("items", List.of("alpha", "beta")));
 
-            Map<String, Object> remote = Json.parseObject(post(BASE + "/use-cases/summarize/prompt",
+            Map<String, Object> remote = Json.parseObject(post(BASE + "/renders/summarize/render",
                     "{\"variables\":{\"items\":[\"alpha\",\"beta\"]}}")
                     .body());
 
@@ -158,7 +158,7 @@ class LiveFixtureIT {
         try (PromptOn client = prompton("production")) {
             UseCase local = client.useCase("embed");
             Map<String, Object> remote =
-                    Json.parseObject(post(BASE + "/use-cases/embed/prompt", "{}").body());
+                    Json.parseObject(post(BASE + "/renders/embed/render", "{}").body());
 
             assertUseCaseMatches(local, remote);
             assertEquals(UseCaseKind.EMBEDDING, local.kind());
@@ -170,7 +170,7 @@ class LiveFixtureIT {
 
     @Test
     void aStagingSnapshotResolvesIndependentlyOfProduction() throws Exception {
-        HttpResponse staging = get(BASE + "/use-cases?environment=staging", Map.of());
+        HttpResponse staging = get(BASE + "/renders?environment=staging", Map.of());
         assertEquals(200, staging.status());
         assertEquals("staging", UseCaseDocument.parse(staging.body()).environment());
 
@@ -184,30 +184,30 @@ class LiveFixtureIT {
 
     @Test
     void theErrorCasesComeBackAsTheContractDescribes() throws Exception {
-        assertEquals(404, get(BASE + "/use-cases?environment=nope", Map.of()).status());
+        assertEquals(404, get(BASE + "/renders?environment=nope", Map.of()).status());
 
-        HttpResponse unknownUseCase = post(BASE + "/use-cases/nope/prompt", "{}");
+        HttpResponse unknownUseCase = post(BASE + "/renders/nope/render", "{}");
         assertEquals(404, unknownUseCase.status());
         assertEquals("not_found", errorCode(unknownUseCase));
 
-        HttpResponse unknownPrompt = post(BASE + "/use-cases/greeting/prompt",
+        HttpResponse unknownPrompt = post(BASE + "/renders/greeting/render",
                 "{\"prompt\":\"fr\",\"variables\":{\"name\":\"Ada\"}}");
         assertEquals(404, unknownPrompt.status());
-        assertEquals("unknown_prompt", errorDetail(unknownPrompt, "reason"));
+        assertEquals("unknown_template", errorDetail(unknownPrompt, "reason"));
 
-        HttpResponse missingVariable = post(BASE + "/use-cases/greeting/prompt",
+        HttpResponse missingVariable = post(BASE + "/renders/greeting/render",
                 "{\"variables\":{}}");
         assertEquals(400, missingVariable.status());
         assertEquals("name", errorDetail(missingVariable, "missing_variable"));
 
-        HttpResponse missingUseCasePath = post(BASE + "/use-cases/%20/prompt", "{}");
+        HttpResponse missingUseCasePath = post(BASE + "/renders/%20/render", "{}");
         assertEquals(404, missingUseCasePath.status());
 
         Map<String, String> wrongKey = new LinkedHashMap<>();
         wrongKey.put("accept", "application/json");
         wrongKey.put("authorization", "Bearer ptn_sdkfixture_wrong");
         assertEquals(401, http.send(new HttpRequest("GET",
-                BASE + "/use-cases?environment=production", wrongKey, null, Duration.ofSeconds(10)))
+                BASE + "/renders?environment=production", wrongKey, null, Duration.ofSeconds(10)))
                 .status());
     }
 
@@ -309,7 +309,7 @@ class LiveFixtureIT {
         record.put("stop_kind", "stop");
         record.put("latency_ms", 842);
         record.put("trace_id", "java-sdk-live-test");
-        record.put("sdk", Map.of("name", "prompton-java", "version", "0.4.0"));
+        record.put("sdk", Map.of("name", "prompton-java", "version", "0.4.1"));
         return record;
     }
 
@@ -319,8 +319,8 @@ class LiveFixtureIT {
         assertEquals(Json.stringAt(remote, "kind"), local.kind().wireName());
         assertEquals(Json.stringAt(deployment, "id"), local.deploymentId());
         assertEquals(Json.intAt(deployment, "revision", null), local.deploymentRevision());
-        assertEquals(Json.stringAt(remote, "prompt"), local.prompt());
-        assertEquals(Json.listAt(remote, "prompt_names"), local.promptNames());
+        assertEquals(Json.stringAt(remote, "template"), local.prompt());
+        assertEquals(Json.listAt(remote, "template_names"), local.promptNames());
         assertEquals(Json.stringAt(remote, "model"), local.model());
         assertEquals(Json.stringAt(remote, "model_id"), local.modelId());
         assertEquals(Json.stringAt(remote, "provider"), local.provider());

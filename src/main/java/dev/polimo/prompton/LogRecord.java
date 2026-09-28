@@ -67,7 +67,7 @@ public final class LogRecord {
         return id == null ? null : String.valueOf(id);
     }
 
-    /** The use case key. */
+    /** The prompt key. */
     public String key() {
         Object useCase = fields.get("use_case");
         return useCase == null ? null : String.valueOf(useCase);
@@ -78,7 +78,7 @@ public final class LogRecord {
         return environment;
     }
 
-    /** The payload policy to apply, or {@code null} to take the use case's from the use-case document. */
+    /** The payload policy to apply, or {@code null} to take the prompt's from the prompt document. */
     public PayloadPolicy payloadPolicy() {
         return payloadPolicy;
     }
@@ -123,7 +123,7 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the use case key */
+        /** @param value the prompt key */
         public Builder key(String value) {
             fields.put("use_case", value);
             return this;
@@ -301,10 +301,10 @@ public final class LogRecord {
         }
 
         /**
-         * Copies the use-case evidence out of a {@link UseCase}: the deployment, the prompt, the
-         * model and provider, the kind, the params, and where the use-case document came from.
+         * Copies the prompt evidence out of a {@link UseCase}: the deployment, the prompt, the
+         * model and provider, the kind, the params, and where the prompt document came from.
          *
-         * @param useCase the use case this call used
+         * @param useCase the prompt this call used
          * @return this builder
          */
         public Builder useCase(UseCase useCase) {

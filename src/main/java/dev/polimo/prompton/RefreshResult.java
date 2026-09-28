@@ -1,6 +1,6 @@
 package dev.polimo.prompton;
 
-/** What one use-case document refresh did. */
+/** What one prompt document refresh did. */
 public enum RefreshResult {
     /** A new document was fetched and installed. */
     UPDATED,

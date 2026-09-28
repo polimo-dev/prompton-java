@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** The use-case loading rules that decide what a call sends, and what they refuse to guess. */
+/** The prompt loading rules that decide what a call sends, and what they refuse to guess. */
 class ResolverTest {
 
     private static final UseCaseDocument SNAPSHOT = UseCaseDocument.parse(Fixtures.production());
@@ -58,12 +58,12 @@ class ResolverTest {
     void anExplicitNullOverrideIsKeptRatherThanRemovingTheKey() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
             {"schema_version": 4, "project": "p", "environment": "production",
-             "use_cases": {"greeting": {"id": "u1", "kind": "chat",
+             "prompts": {"greeting": {"id": "u1", "kind": "chat",
                                         "default_params": {"temperature": 0.5, "seed": 7}}},
              "deployments": {"greeting": {"id": "d1", "revision": 1, "model_id": "m1",
                                           "params": {"seed": null},
                                           "provider_options": {"only": null},
-                                          "prompt_pins": {"default": "v1"}}},
+                                          "template_pins": {"default": "v1"}}},
              "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
                                         "messages": [{"role": "user", "content": "hi"}]}},
              "models": {"m1": {"id": "m1", "provider": "openrouter", "model_id": "openai/gpt-4o-mini",
@@ -84,10 +84,10 @@ class ResolverTest {
     void nativeToolMessagesSurviveRenderingAsWholeProviderMaps() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
             {"schema_version": 7, "project": "p", "environment": "production",
-             "use_cases": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
+             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
              "deployments": {"tool_chat": {"id": "d1", "revision": 1, "model_id": "m1",
                                           "params": {}, "provider_options": {},
-                                          "prompt_pins": {"default": "v1"}}},
+                                          "template_pins": {"default": "v1"}}},
              "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
                 "messages": [
                   {"role":"system","content":"Continue with {{ input }}."},
@@ -119,10 +119,10 @@ class ResolverTest {
     void promptToolsBecomeProviderParamsAndStripAuthoringMetadata() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
             {"schema_version": 7, "project": "p", "environment": "production",
-             "use_cases": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
+             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
              "deployments": {"tool_chat": {"id": "d1", "revision": 1, "model_id": "m1",
                                           "params": {}, "provider_options": {},
-                                          "prompt_pins": {"default": "v1"}}},
+                                          "template_pins": {"default": "v1"}}},
              "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
                 "messages": [{"role":"user","content":"hi"}],
                 "tools": {"definitions": [{"type":"function","function":{"name":"search"},
@@ -147,10 +147,10 @@ class ResolverTest {
     void promptToolsConflictWithDifferentLegacyProviderParams() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
             {"schema_version": 7, "project": "p", "environment": "production",
-             "use_cases": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
+             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
              "deployments": {"tool_chat": {"id": "d1", "revision": 1, "model_id": "m1",
                                           "params": {"parallel_tool_calls": true}, "provider_options": {},
-                                          "prompt_pins": {"default": "v1"}}},
+                                          "template_pins": {"default": "v1"}}},
              "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
                 "messages": [{"role":"user","content":"hi"}],
                 "tools": {"parallel_tool_calls": false}}},
@@ -172,10 +172,10 @@ class ResolverTest {
     void aSnapshotThatReferencesWhatItDoesNotContainStillResolvesWithWarnings() {
         UseCaseDocument degraded = UseCaseDocument.parse("""
             {"schema_version": 4, "project": "p", "environment": "production",
-             "use_cases": {"greeting": {"id": "u1", "kind": "chat", "default_params": {}}},
+             "prompts": {"greeting": {"id": "u1", "kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"id": "d1", "revision": 1, "model_id": "gone",
                                           "params": {}, "provider_options": {},
-                                          "prompt_pins": {"default": "missing"}}},
+                                          "template_pins": {"default": "missing"}}},
              "prompt_versions": {}, "models": {}}
             """);
         UseCase pin = Resolver.resolve(degraded, "greeting");

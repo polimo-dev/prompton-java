@@ -25,8 +25,8 @@ import java.util.logging.Logger;
  * The three tiers of configuration, in the order they are consulted: memory, the disk cache, the
  * bundled file — and behind them PromptOn itself.
  *
- * <p>Every use-case lookup reads memory, so within the cache TTL no call touches the network. Once the TTL
- * has passed a refresh runs in the background: {@code GET /use-cases} with {@code If-None-Match},
+ * <p>Every prompt lookup reads memory, so within the cache TTL no call touches the network. Once the TTL
+ * has passed a refresh runs in the background: {@code GET /renders} with {@code If-None-Match},
  * where a {@code 304} means there is nothing to parse. A refresh never blocks a provider call and never
  * fails one — while it is in flight, and if it fails, the previous document keeps serving. A
  * {@code 429} is honoured to the second from {@code Retry-After}; a 5xx, a timeout or a transport
@@ -86,10 +86,10 @@ final class SnapshotStore implements AutoCloseable {
         }
         synchronized (scheduleLock) {
             refresher = Executors.newSingleThreadScheduledExecutor(
-                    runnable -> daemon(runnable, "prompton-use-cases-refresh"));
+                    runnable -> daemon(runnable, "prompton-prompts-refresh"));
             if (config.pollingEnabled()) {
                 poller = Executors.newSingleThreadScheduledExecutor(
-                        runnable -> daemon(runnable, "prompton-use-cases-poll"));
+                        runnable -> daemon(runnable, "prompton-prompts-poll"));
                 poller.scheduleWithFixedDelay(
                         this::pollTick, 0, Math.max(1, config.cacheTtl().toMillis()),
                         TimeUnit.MILLISECONDS);
@@ -120,7 +120,7 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /**
-     * The document to load use cases from, waiting for the first fetch when memory, disk and bundle are
+     * The document to load prompts from, waiting for the first fetch when memory, disk and bundle are
      * all empty. Never blocks once anything has been loaded.
      */
     Entry require() {
@@ -261,7 +261,7 @@ final class SnapshotStore implements AutoCloseable {
         if (previous != null && previous.etag() != null) {
             headers.put("if-none-match", previous.etag());
         }
-        String url = config.baseUrl() + "/use-cases?environment="
+        String url = config.baseUrl() + "/renders?environment="
                 + URLEncoder.encode(config.environment(), StandardCharsets.UTF_8);
 
         HttpResponse response;
@@ -445,12 +445,12 @@ final class SnapshotStore implements AutoCloseable {
     void exportTo(Path path) {
         Entry entry = current.get();
         if (entry == null) {
-            throw new PromptOnException("there is no use-case document in memory to export");
+            throw new PromptOnException("there is no prompt document in memory to export");
         }
         String body = entry.rawJson();
         if (body == null) {
             throw new PromptOnException(
-                    "the use-case document in memory has no original document to export");
+                    "the prompt document in memory has no original document to export");
         }
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("etag", entry.etag());
@@ -459,7 +459,7 @@ final class SnapshotStore implements AutoCloseable {
         meta.put("project", entry.useCaseDocument().project());
         meta.put("exported_at", Instant.now().toString());
         if (!DiskCache.write(path, body, meta)) {
-            throw new PromptOnException("could not write the use-case document bundle to " + path);
+            throw new PromptOnException("could not write the prompt document bundle to " + path);
         }
     }
 

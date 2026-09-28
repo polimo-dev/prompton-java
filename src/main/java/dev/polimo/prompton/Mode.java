@@ -7,7 +7,7 @@ public enum Mode {
     /** No HTTP at all. Use-case documents are installed by the test, and logs are captured for assertions. */
     TEST,
     /**
-     * No HTTP. The use-case document comes from the disk cache or the bundle.
+     * No HTTP. The prompt document comes from the disk cache or the bundle.
      *
      * <p>Monitoring logs cannot be sent and are not stored: each one is counted in
      * {@link LogStats#droppedFailed()} and dropped, with one log line saying so. Configuring no

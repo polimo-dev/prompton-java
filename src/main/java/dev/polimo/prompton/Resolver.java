@@ -5,13 +5,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The local resolution algorithm: use-case document + use case key (+ prompt name) → {@link UseCase}.
+ * The local resolution algorithm: prompt document + prompt key (+ prompt name) → {@link UseCase}.
  *
- * <p>A pure function, and the same two lookups the server runs for {@code POST /use-cases/{key}/prompt}:
+ * <p>A pure function, and the same two lookups the server runs for {@code POST /renders/{key}/render}:
  *
  * <pre>
  * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved
- * version          = document.prompt_versions[deployment.prompt_pins[prompt or "default"]]
+ * version          = document.prompt_versions[deployment.template_pins[prompt or "default"]]
  * model            = document.models[deployment.model_id]
  * params           = use_case.default_params  &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
@@ -39,13 +39,13 @@ final class Resolver {
     }
 
     /**
-     * Resolves, recording where the use-case document came from.
+     * Resolves, recording where the prompt document came from.
      *
      * @param document the document to resolve against
-     * @param useCaseKey the use case key
+     * @param useCaseKey the prompt key
      * @param promptName the prompt name, or {@code null} for {@value #DEFAULT_PROMPT}
-     * @param source where the use-case document came from
-     * @param etag the use-case document's ETag, or {@code null}
+     * @param source where the prompt document came from
+     * @param etag the prompt document's ETag, or {@code null}
      * @return the pin for this call
      */
     static UseCase resolve(

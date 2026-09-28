@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The PromptOn client: load a use case, render its prompt, call your provider yourself, log what
+ * The PromptOn client: load a prompt, render its prompt, call your provider yourself, log what
  * happened.
  *
  * <pre>{@code
@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <p>PromptOn is never in the request path: the provider call above is yours, with your key and
- * your HTTP client. {@link #useCase(String)} reads a use-case document held in memory, refreshed in the background,
+ * your HTTP client. {@link #useCase(String)} reads a prompt document held in memory, refreshed in the background,
  * mirrored to disk and backed by a file you can ship inside the application — so if PromptOn is
  * unreachable your app keeps generating on the last configuration it saw.
  *
@@ -80,24 +80,24 @@ public final class PromptOn implements AutoCloseable {
     }
 
     // ---------------------------------------------------------------------
-    // use cases
+    // prompts
 
-    /** The use case with its {@code default} prompt. */
+    /** The prompt with its {@code default} prompt. */
     public UseCase useCase(String useCase) {
         return useCase(useCase, null);
     }
 
     /**
-     * The use case with a named prompt.
+     * The prompt with a named prompt.
      *
-     * <p>Reads the use-case document in memory: no HTTP call, no blocking, unless nothing has been loaded
+     * <p>Reads the prompt document in memory: no HTTP call, no blocking, unless nothing has been loaded
      * yet and the very first fetch is still in flight.
      *
-     * @param useCase the use case key
+     * @param useCase the prompt key
      * @param promptName the prompt name, or {@code null} for {@code default}
      * @return what to send to the provider
-     * @throws UseCaseException when the use case, its deployment or that prompt name is not in
-     *     the use-case document, or when nothing is cached and PromptOn is unreachable
+     * @throws UseCaseException when the prompt, its deployment or that prompt name is not in
+     *     the prompt document, or when nothing is cached and PromptOn is unreachable
      */
     public UseCase useCase(String useCase, String promptName) {
         SnapshotStore.Entry entry = snapshots.require();
@@ -112,16 +112,16 @@ public final class PromptOn implements AutoCloseable {
     }
 
     /**
-     * Resolves on the server with {@code POST /use-cases/{key}/prompt}, returning the raw templates.
+     * Resolves on the server with {@code POST /renders/{key}/render}, returning the raw templates.
      *
-     * <p>The answer is cached for the use-case document TTL per use case, prompt and environment; render it
+     * <p>The answer is cached for the prompt document TTL per prompt, prompt and environment; render it
      * locally with {@link UseCase#messages(Map)} or {@link UseCase#text(Map)}. Use it as a smoke
      * test or on a cold, low-traffic path,
      * never once per request in a hot loop.
      *
-     * @param useCase the use case key
+     * @param useCase the prompt key
      * @param promptName the prompt name, or {@code null} for {@code default}
-     * @return the use case as the server rendered it
+     * @return the prompt as the server rendered it
      */
     public UseCase useCaseRemote(String useCase, String promptName) {
         return resolveClient.resolve(useCase, promptName, null).attachTo(this);
@@ -130,13 +130,13 @@ public final class PromptOn implements AutoCloseable {
     /**
      * Resolves and renders on the server in one round trip.
      *
-     * <p>Not cached, because the answer depends on the variables. The returned use case's
+     * <p>Not cached, because the answer depends on the variables. The returned prompt's
      * {@link UseCase#messages()} and {@link UseCase#textTemplate()} are already rendered.
      *
-     * @param useCase the use case key
+     * @param useCase the prompt key
      * @param promptName the prompt name, or {@code null} for {@code default}
      * @param variables the values the template reads
-     * @return the use case, with its prompt rendered
+     * @return the prompt, with its prompt rendered
      */
     public UseCase useCaseRemote(
             String useCase, String promptName, Map<String, Object> variables) {
@@ -156,7 +156,7 @@ public final class PromptOn implements AutoCloseable {
     /**
      * Queues one monitoring log and returns immediately.
      *
-     * <p>Fills in {@code id} and {@code sdk} when they are unset, applies the use case's payload
+     * <p>Fills in {@code id} and {@code sdk} when they are unset, applies the prompt's payload
      * policy — sampling, truncation, hashing, your redact hook — and hands the record to the batch
      * buffer. It never throws for a transport reason: a log that cannot be sent is counted, not
      * raised.
@@ -331,7 +331,7 @@ public final class PromptOn implements AutoCloseable {
      * as {@code status: "error"} with {@code error.kind: "app"} and then rethrown unchanged, so the
      * wrapper never swallows a failure or changes control flow.
      *
-     * @param useCase the use case this call used
+     * @param useCase the prompt this call used
      * @param meta what went in, and how to find this call again later
      * @param call your provider call
      * @param <T> whatever your own code wants back
@@ -363,7 +363,7 @@ public final class PromptOn implements AutoCloseable {
     /**
      * {@link #track(UseCase, TrackMeta, ProviderCall)} for a call that throws no checked exception.
      *
-     * @param useCase the use case this call used
+     * @param useCase the prompt this call used
      * @param meta what went in, and how to find this call again later
      * @param call your provider call
      * @param <T> whatever your own code wants back
@@ -496,7 +496,7 @@ public final class PromptOn implements AutoCloseable {
     }
 
     // ---------------------------------------------------------------------
-    // use-case document control
+    // prompt document control
 
     /** Where the configuration in memory came from and how old it is. */
     public UseCaseDocumentInfo useCaseDocumentInfo() {
@@ -504,7 +504,7 @@ public final class PromptOn implements AutoCloseable {
     }
 
     /**
-     * Fetches the use-case document once, now, and waits for it — for a script, a warm-up or a test.
+     * Fetches the prompt document once, now, and waits for it — for a script, a warm-up or a test.
      *
      * @return what the refresh did; a failure is reported, not thrown
      */
@@ -515,7 +515,7 @@ public final class PromptOn implements AutoCloseable {
     /**
      * Writes the document in memory, with its {@code .meta.json} sidecar, to {@code path}.
      *
-     * <p>This is how the bundled use-case document is built: run it in CI and commit both files, one per
+     * <p>This is how the bundled prompt document is built: run it in CI and commit both files, one per
      * environment, so a cold start with no disk cache and no network still renders.
      *
      * @param path where to write it
@@ -524,18 +524,18 @@ public final class PromptOn implements AutoCloseable {
         snapshots.exportTo(path);
     }
 
-    /** Installs a use-case document the application supplied, as {@link Source#MANUAL}. */
+    /** Installs a prompt document the application supplied, as {@link Source#MANUAL}. */
     public void putUseCaseDocument(String json) {
         snapshots.put(UseCaseDocument.parse(json), Source.MANUAL, json);
     }
 
-    /** Installs an already-parsed use-case document, as {@link Source#MANUAL}. */
+    /** Installs an already-parsed prompt document, as {@link Source#MANUAL}. */
     public void putUseCaseDocument(UseCaseDocument document) {
         snapshots.put(document, Source.MANUAL, null);
     }
 
     /**
-     * Installs a use-case document and says where it is to be reported as coming from — for a test that
+     * Installs a prompt document and says where it is to be reported as coming from — for a test that
      * needs a record to read {@code source: "remote"}.
      *
      * @param document the document to install
@@ -545,7 +545,7 @@ public final class PromptOn implements AutoCloseable {
         snapshots.put(document, source, null);
     }
 
-    /** The use-case document in memory, or {@code null} when nothing has been loaded. */
+    /** The prompt document in memory, or {@code null} when nothing has been loaded. */
     public UseCaseDocument useCaseDocument() {
         SnapshotStore.Entry entry = snapshots.current();
         return entry == null ? null : entry.useCaseDocument();

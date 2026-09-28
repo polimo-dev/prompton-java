@@ -11,10 +11,10 @@ import java.util.Map;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
-/** Replays {@code conformance/use_case.json}: use-case document + use case (+ prompt) to a use case. */
+/** Replays {@code conformance/render.json}: prompt document + prompt (+ prompt) to a prompt. */
 class UseCaseConformanceTest {
 
-    private static final Map<String, Object> FILE = Conformance.load("use_case.json");
+    private static final Map<String, Object> FILE = Conformance.load("prompt.json");
 
     @TestFactory
     List<DynamicTest> useCaseCases() {
@@ -27,7 +27,7 @@ class UseCaseConformanceTest {
             String name = Json.stringAt(testCase, "name");
             tests.add(DynamicTest.dynamicTest(name, () -> runCase(parsed, testCase)));
         }
-        assertEquals(15, tests.size(), "every use-case case must run");
+        assertEquals(16, tests.size(), "every prompt case must run");
         return tests;
     }
 
@@ -43,8 +43,8 @@ class UseCaseConformanceTest {
         try {
             useCase = Resolver.resolve(
                     document,
-                    Json.stringAt(testCase, "use_case"),
-                    Json.stringAt(testCase, "prompt"),
+                    Json.stringAt(testCase, "prompt_key"),
+                    Json.stringAt(testCase, "template"),
                     Source.REMOTE,
                     null);
         } catch (UseCaseException e) {
@@ -52,11 +52,11 @@ class UseCaseConformanceTest {
             if (expect.containsKey("key")) {
                 assertEquals(Json.stringAt(expect, "key"), e.key(), name);
             }
-            if (expect.containsKey("prompt")) {
-                assertEquals(Json.stringAt(expect, "prompt"), e.prompt(), name);
+            if (expect.containsKey("template")) {
+                assertEquals(Json.stringAt(expect, "template"), e.prompt(), name);
             }
-            if (expect.containsKey("prompt_names")) {
-                assertEquals(Json.listAt(expect, "prompt_names"), e.promptNames(), name);
+            if (expect.containsKey("template_names")) {
+                assertEquals(Json.listAt(expect, "template_names"), e.promptNames(), name);
             }
             return;
         }
@@ -85,8 +85,8 @@ class UseCaseConformanceTest {
         assertEquals(Json.stringAt(expect, "deployment_id"), useCase.deploymentId(), name);
         assertEquals(Json.intAt(expect, "revision", null), useCase.deploymentRevision(), name);
         assertEquals(Json.stringAt(expect, "kind"), useCase.kind().wireName(), name);
-        assertEquals(Json.stringAt(expect, "prompt"), useCase.prompt(), name);
-        assertEquals(Json.listAt(expect, "prompt_names"), useCase.promptNames(), name);
+        assertEquals(Json.stringAt(expect, "template"), useCase.prompt(), name);
+        assertEquals(Json.listAt(expect, "template_names"), useCase.promptNames(), name);
         assertEquals(Json.stringAt(expect, "model"), useCase.model(), name);
         assertEquals(Json.stringAt(expect, "model_id"), useCase.modelId(), name);
         assertEquals(Json.stringAt(expect, "provider"), useCase.provider(), name);

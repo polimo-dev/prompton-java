@@ -12,13 +12,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The {@code POST /use-cases/{key}/prompt} path: its cache, and how it turns PromptOn's errors into exceptions. */
+/** The {@code POST /renders/{key}/render} path: its cache, and how it turns PromptOn's errors into exceptions. */
 class ResolveClientTest {
 
     private static final String GREETING = """
         {"key":"greeting","kind":"chat",
          "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d001","revision":3},
-         "prompt":"default","prompt_names":["default","ko"],
+         "template":"default","template_names":["default","ko"],
          "model_id":"0198f2a1-0000-7000-8000-00000000e001","model":"openai/gpt-4o-mini",
          "provider":"openrouter",
          "params":{"temperature":0.2},
@@ -54,7 +54,7 @@ class ResolveClientTest {
     }
 
     private static boolean isPromptRequest(StubServer.Request request) {
-        return request.method().equals("POST") && request.path().endsWith("/prompt");
+        return request.method().equals("POST") && request.path().endsWith("/render");
     }
 
     @Test
@@ -76,7 +76,7 @@ class ResolveClientTest {
                 assertEquals(List.of("default", "ko"), pin.promptNames());
                 assertEquals("Say hello to {{ name }}.", pin.messages().get(1).content());
             }
-            assertEquals(1, calls.get(), "the answer is cached per use case, prompt and environment");
+            assertEquals(1, calls.get(), "the answer is cached per prompt, prompt and environment");
         }
     }
 
@@ -145,7 +145,7 @@ class ResolveClientTest {
             PromptOnException second = assertThrows(PromptOnException.class,
                     () -> prompton.useCaseRemote("greeting", null));
             assertTrue(second.getMessage().contains("wait until"), second.getMessage());
-            assertEquals(1, server.requests("/prompt").size(), "the pause holds with no cache too");
+            assertEquals(1, server.requests("/render").size(), "the pause holds with no cache too");
         }
     }
 
@@ -183,8 +183,8 @@ class ResolveClientTest {
         server.handle(request -> StubServer.Reply.of(404, """
             {"error":{"code":"not_found",
              "message":"the live deployment pins no prompt named \\"fr\\"",
-             "details":{"reason":"unknown_prompt","prompt":"fr","key":"greeting",
-                        "prompt_names":["default","ko"]}}}
+             "details":{"reason":"unknown_template","template":"fr","key":"greeting",
+                        "template_names":["default","ko"]}}}
             """));
         try (PromptOn prompton = client()) {
             UseCaseException e = assertThrows(UseCaseException.class,
@@ -199,7 +199,7 @@ class ResolveClientTest {
     @Test
     void anUnknownUseCaseErrorUsesTheCanonicalKeyDetail() {
         server.handle(request -> StubServer.Reply.of(404,
-                "{\"error\":{\"code\":\"not_found\",\"message\":\"unknown use case\","
+                "{\"error\":{\"code\":\"not_found\",\"message\":\"unknown prompt\","
                         + "\"details\":{\"reason\":\"unknown_use_case\",\"key\":\"nope\"}}}"));
         try (PromptOn prompton = client()) {
             UseCaseException e = assertThrows(UseCaseException.class,

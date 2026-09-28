@@ -45,12 +45,12 @@ public final class Template {
             this.wireName = wireName;
         }
 
-        /** The value stored in the use-case document. */
+        /** The value stored in the prompt document. */
         public String wireName() {
             return wireName;
         }
 
-        /** Parses a use-case document value; anything but {@code raw} is {@link #LIQUID}. */
+        /** Parses a prompt document value; anything but {@code raw} is {@link #LIQUID}. */
         public static Engine from(String value) {
             return value != null && value.trim().equalsIgnoreCase("raw") ? RAW : LIQUID;
         }
@@ -149,7 +149,7 @@ public final class Template {
      * Checks a template against the allowed subset. An empty list means it is fine.
      *
      * <p>The server runs the same check when a prompt version is committed, so a template that
-     * fails lint can never reach a use-case document.
+     * fails lint can never reach a prompt document.
      */
     public static List<LintIssue> lint(String source) {
         List<LintIssue> issues = new ArrayList<>();
