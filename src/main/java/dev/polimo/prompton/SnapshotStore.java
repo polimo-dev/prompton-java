@@ -26,7 +26,7 @@ import java.util.logging.Logger;
  * bundled file — and behind them PromptOn itself.
  *
  * <p>Every prompt lookup reads memory, so within the cache TTL no call touches the network. Once the TTL
- * has passed a refresh runs in the background: {@code GET /renders} with {@code If-None-Match},
+ * has passed a refresh runs in the background: {@code GET /prompts} with {@code If-None-Match},
  * where a {@code 304} means there is nothing to parse. A refresh never blocks a provider call and never
  * fails one — while it is in flight, and if it fails, the previous document keeps serving. A
  * {@code 429} is honoured to the second from {@code Retry-After}; a 5xx, a timeout or a transport
@@ -261,7 +261,7 @@ final class SnapshotStore implements AutoCloseable {
         if (previous != null && previous.etag() != null) {
             headers.put("if-none-match", previous.etag());
         }
-        String url = config.baseUrl() + "/renders?environment="
+        String url = config.baseUrl() + "/prompts?environment="
                 + URLEncoder.encode(config.environment(), StandardCharsets.UTF_8);
 
         HttpResponse response;

@@ -16,11 +16,11 @@ class PromptOnConfigTest {
     @Test
     void anExplicitOptionBeatsTheEnvironmentAndTheDefault() {
         PromptOnConfig config = PromptOnConfig.builder()
-                .host("https://renderon.example")
+                .host("https://prompton.example")
                 .environment("staging")
                 .apiKey("ptn_myproject_secret")
                 .build();
-        assertEquals("https://renderon.example/api/v1", config.baseUrl());
+        assertEquals("https://prompton.example/api/v1", config.baseUrl());
         assertEquals("staging", config.environment());
         assertEquals("ptn_myproject_secret", config.apiKey());
     }
@@ -44,7 +44,7 @@ class PromptOnConfigTest {
         assertEquals(10_000, config.logMaxBuffer());
         assertEquals(Mode.LIVE, config.mode());
         assertEquals(PayloadPolicy.DEFAULT, config.payloadDefaults());
-        assertEquals("prompton-java/0.4.1", config.userAgent());
+        assertEquals("prompton-java/0.4.2", config.userAgent());
         if (System.getenv("PTN_HOST") == null) {
             assertEquals("https://app.prompton.ai/api/v1", config.baseUrl());
         }

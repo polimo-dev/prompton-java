@@ -30,6 +30,7 @@ public final class UseCase {
     private final String provider;
     private final Map<String, Object> params;
     private final Map<String, Object> providerOptions;
+    private final Map<String, Object> providerPreparedRequest;
     private final String promptVersionId;
     private final Integer promptVersionNumber;
     private final Template.Engine engine;
@@ -54,6 +55,7 @@ public final class UseCase {
         this.provider = builder.provider;
         this.params = frozen(builder.params);
         this.providerOptions = frozen(builder.providerOptions);
+        this.providerPreparedRequest = frozen(builder.providerPreparedRequest);
         this.promptVersionId = builder.promptVersionId;
         this.promptVersionNumber = builder.promptVersionNumber;
         this.engine = builder.engine;
@@ -133,6 +135,11 @@ public final class UseCase {
     /** {@code model.provider_options} with {@code deployment.provider_options} layered on top. */
     public Map<String, Object> providerOptions() {
         return providerOptions;
+    }
+
+    /** The provider-ready request body and metadata returned by server rendering, when available. */
+    public Map<String, Object> providerPreparedRequest() {
+        return providerPreparedRequest;
     }
 
     /** The id of the pinned prompt version, or {@code null} for an embedding prompt. */
@@ -262,6 +269,7 @@ public final class UseCase {
         private String provider;
         private Map<String, Object> params = Map.of();
         private Map<String, Object> providerOptions = Map.of();
+        private Map<String, Object> providerPreparedRequest = Map.of();
         private String promptVersionId;
         private Integer promptVersionNumber;
         private Template.Engine engine = Template.Engine.LIQUID;
@@ -288,6 +296,7 @@ public final class UseCase {
             this.provider = source.provider;
             this.params = source.params;
             this.providerOptions = source.providerOptions;
+            this.providerPreparedRequest = source.providerPreparedRequest;
             this.promptVersionId = source.promptVersionId;
             this.promptVersionNumber = source.promptVersionNumber;
             this.engine = source.engine;
@@ -368,6 +377,12 @@ public final class UseCase {
         /** @param value the layered provider options */
         public Builder providerOptions(Map<String, Object> value) {
             this.providerOptions = value == null ? Map.of() : value;
+            return this;
+        }
+
+        /** @param value the provider-ready request returned by server rendering */
+        public Builder providerPreparedRequest(Map<String, Object> value) {
+            this.providerPreparedRequest = value == null ? Map.of() : value;
             return this;
         }
 

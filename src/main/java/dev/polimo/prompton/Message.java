@@ -16,10 +16,11 @@ public final class Message {
     private final String name;
     private final String toolCallId;
     private final List<Map<String, Object>> toolCalls;
+    private final boolean hasToolCalls;
     private final Map<String, Object> extra;
 
     public Message(String role, String content, String name) {
-        this(role, null, Objects.requireNonNull(content, "content"), content, true, name, null, List.of(), Map.of());
+        this(role, null, Objects.requireNonNull(content, "content"), content, true, name, null, List.of(), false, Map.of());
     }
 
     private Message(
@@ -31,6 +32,7 @@ public final class Message {
             String name,
             String toolCallId,
             List<Map<String, Object>> toolCalls,
+            boolean hasToolCalls,
             Map<String, Object> extra) {
         this.role = role;
         this.type = type;
@@ -40,6 +42,7 @@ public final class Message {
         this.name = name;
         this.toolCallId = toolCallId;
         this.toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
+        this.hasToolCalls = hasToolCalls;
         this.extra =
                 extra == null
                         ? Map.of()
@@ -61,7 +64,7 @@ public final class Message {
     public Map<String, Object> extra() { return extra; }
 
     public Message withContent(String newContent) {
-        return new Message(role, type, newContent, newContent, true, name, toolCallId, toolCalls, extra);
+        return new Message(role, type, newContent, newContent, true, name, toolCallId, toolCalls, hasToolCalls, extra);
     }
 
     public Map<String, Object> toMap() {
@@ -71,7 +74,7 @@ public final class Message {
         if (hasContent || !"slot".equals(type)) map.put("content", contentValue());
         if (name != null) map.put("name", name);
         if (toolCallId != null) map.put("tool_call_id", toolCallId);
-        if (!toolCalls.isEmpty()) map.put("tool_calls", toolCalls);
+        if (hasToolCalls || !toolCalls.isEmpty()) map.put("tool_calls", toolCalls);
         return map;
     }
 
@@ -100,6 +103,7 @@ public final class Message {
                 name == null ? null : String.valueOf(name),
                 toolCallId == null ? null : String.valueOf(toolCallId),
                 calls,
+                map.containsKey("tool_calls"),
                 extra);
     }
 }

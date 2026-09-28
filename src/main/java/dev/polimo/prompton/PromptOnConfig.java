@@ -30,7 +30,7 @@ public final class PromptOnConfig {
     public static final String SDK_NAME = "prompton-java";
 
     /** The SDK's version. */
-    public static final String SDK_VERSION = "0.4.1";
+    public static final String SDK_VERSION = "0.4.2";
 
     private final String apiKey;
     private final String baseUrl;
@@ -467,7 +467,7 @@ public final class PromptOnConfig {
         return end > 4 ? apiKey.substring(4, end) : null;
     }
 
-    /** {@code <os cache dir>/renderon/renders-<project>-<environment>.json}. */
+    /** {@code <os cache dir>/prompton/prompts-<project>-<environment>.json}. */
     static Path defaultDiskCachePath(String project, String environment) {
         String slug = sanitize(project == null ? "default" : project)
                 + "-" + sanitize(environment == null ? DEFAULT_ENVIRONMENT : environment);

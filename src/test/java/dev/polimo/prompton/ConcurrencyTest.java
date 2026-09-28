@@ -42,7 +42,7 @@ class ConcurrencyTest {
     @Test
     void manyThreadsResolveRenderAndLogAgainstOneClient() throws Exception {
         server.handle(request -> {
-            if (request.path().endsWith("/renders")) {
+            if (request.path().endsWith("/prompts")) {
                 return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
             }
             int count = Json.listAt(Json.parseObject(request.body()), "logs").size();

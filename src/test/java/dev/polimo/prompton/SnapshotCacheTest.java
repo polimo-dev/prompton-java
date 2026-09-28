@@ -62,7 +62,7 @@ class SnapshotCacheTest {
             for (int i = 0; i < 25; i++) {
                 assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
             }
-            assertEquals(1, server.requests("/renders").size(),
+            assertEquals(1, server.requests("/prompts").size(),
                     "one fetch on start, and nothing else within the TTL");
         }
     }
@@ -140,7 +140,7 @@ class SnapshotCacheTest {
                 .withHeader("etag", "\"v1\""));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(200)).build())) {
             prompton.useCase("greeting");
-            assertEquals(1, server.requests("/renders").size());
+            assertEquals(1, server.requests("/prompts").size());
             Thread.sleep(250);
 
             int threads = 32;
@@ -168,7 +168,7 @@ class SnapshotCacheTest {
                 pool.shutdownNow();
             }
             Thread.sleep(50);
-            assertEquals(2, server.requests("/renders").size(),
+            assertEquals(2, server.requests("/prompts").size(),
                     "3200 resolves on one expired TTL are one refresh, not one fetch per caller");
         }
     }

@@ -40,7 +40,7 @@ class MonitoringLogTest {
     }
 
     private StubServer.Reply defaultRoutes(StubServer.Request request) {
-        if (request.path().endsWith("/renders")) {
+        if (request.path().endsWith("/prompts")) {
             return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
         }
         return StubServer.Reply.of(202, "{\"accepted\":1,\"duplicates\":0,\"rejected\":[]}");
@@ -88,7 +88,7 @@ class MonitoringLogTest {
                 Map<String, Object> map = Conformance.map(entry);
                 assertTrue(UuidV7.isUuidV7(String.valueOf(map.get("id"))),
                         "the id must be a UUIDv7, not a v4: " + map.get("id"));
-                assertEquals(Map.of("name", "prompton-java", "version", "0.4.1"), map.get("sdk"));
+                assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), map.get("sdk"));
             }
         }
     }
@@ -134,7 +134,7 @@ class MonitoringLogTest {
 
     @Test
     void partialAcceptanceIsReadAndAcceptedRecordsAreNeverResent() {
-        server.handle(request -> request.path().endsWith("/renders")
+        server.handle(request -> request.path().endsWith("/prompts")
                 ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
                 : StubServer.Reply.of(202, "{\"accepted\":2,\"duplicates\":0,\"rejected\":"
                         + "[{\"index\":1,\"id\":\"x\",\"code\":\"invalid_request\","
@@ -157,7 +157,7 @@ class MonitoringLogTest {
     void aRateLimitResendsTheSameBatchWithTheSameIdsAndNeverReachesTheCaller() {
         AtomicInteger posts = new AtomicInteger();
         server.handle(request -> {
-            if (request.path().endsWith("/renders")) {
+            if (request.path().endsWith("/prompts")) {
                 return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
             }
             if (posts.incrementAndGet() == 1) {
@@ -182,7 +182,7 @@ class MonitoringLogTest {
 
     @Test
     void aServerErrorIsRetriedAndThenDroppedAndCounted() {
-        server.handle(request -> request.path().endsWith("/renders")
+        server.handle(request -> request.path().endsWith("/prompts")
                 ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
                 : StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}")
                         .withHeader("retry-after", "0"));
@@ -200,7 +200,7 @@ class MonitoringLogTest {
     @Test
     void aPayloadTooLargeBatchIsSplitInHalf() {
         server.handle(request -> {
-            if (request.path().endsWith("/renders")) {
+            if (request.path().endsWith("/prompts")) {
                 return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
             }
             int count = Json.listAt(Json.parseObject(request.body()), "logs").size();
@@ -224,7 +224,7 @@ class MonitoringLogTest {
 
     @Test
     void anyOtherFourxxDropsTheBatchWithoutRetrying() {
-        server.handle(request -> request.path().endsWith("/renders")
+        server.handle(request -> request.path().endsWith("/prompts")
                 ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
                 : StubServer.Reply.of(403, "{\"error\":{\"code\":\"forbidden\","
                         + "\"message\":\"API key lacks the logs scope\"}}"));
@@ -308,7 +308,7 @@ class MonitoringLogTest {
 
             assertEquals(0, server.requests().size(), "test mode makes no HTTP call");
             Map<String, Object> logged = prompton.capturedLogs().get(0);
-            assertEquals("greeting", logged.get("use_case"));
+            assertEquals("greeting", logged.get("prompt_key"));
             assertEquals("openai/gpt-4o-mini", logged.get("model"));
             assertEquals("manual", logged.get("source"));
             assertNotNull(logged.get("id"));
@@ -348,7 +348,7 @@ class MonitoringLogTest {
             assertEquals("stop", logged.get("stop_kind"));
             assertEquals("chat", logged.get("kind"));
             assertEquals(3, logged.get("deployment_revision"));
-            assertEquals("default", logged.get("prompt"));
+            assertEquals("default", logged.get("template"));
             assertEquals("OpenAI", logged.get("upstream_provider"));
             assertEquals(Map.of("language", "en"), logged.get("context"));
             assertEquals(Map.of("job_id", 88, "is_byok", false), logged.get("metadata"));
@@ -371,8 +371,8 @@ class MonitoringLogTest {
                     () -> ProviderResult.ok("안녕하세요, Ada!", Result.ofContent("안녕하세요, Ada!")));
 
             Map<String, Object> logged = prompton.capturedLogs().get(0);
-            assertEquals("greeting", logged.get("use_case"));
-            assertEquals("ko", logged.get("prompt"));
+            assertEquals("greeting", logged.get("prompt_key"));
+            assertEquals("ko", logged.get("template"));
             assertEquals(korean.promptVersionId(), logged.get("prompt_version_id"));
         }
     }
@@ -437,7 +437,7 @@ class MonitoringLogTest {
             Map<String, Object> logged = prompton.capturedLogs().get(0);
             assertFalse(logged.containsKey("input"));
             assertFalse(logged.containsKey("output"));
-            assertEquals("nowhere", logged.get("use_case"));
+            assertEquals("nowhere", logged.get("prompt_key"));
         }
     }
 
@@ -469,8 +469,8 @@ class MonitoringLogTest {
             Map<String, Object> sent = Conformance.map(Json.listAt(body, "events").get(0));
             assertTrue(UuidV7.isUuidV7(String.valueOf(sent.get("event_id"))));
             assertNotNull(sent.get("observed_at"));
-            assertEquals(Map.of("name", "prompton-java", "version", "0.4.1"), sent.get("sdk"));
-            assertEquals(Map.of("version", "0.4.1"), Conformance.map(sent.get("metadata")).get("sdk"));
+            assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), sent.get("sdk"));
+            assertEquals(Map.of("version", "0.4.2"), Conformance.map(sent.get("metadata")).get("sdk"));
             assertEquals(Map.of("query", "mood"), sent.get("arguments"));
             assertEquals(List.of(Map.of("title", "today")), sent.get("result"));
         }

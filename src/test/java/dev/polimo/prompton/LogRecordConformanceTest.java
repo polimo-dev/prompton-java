@@ -31,7 +31,7 @@ class LogRecordConformanceTest {
             String name = Json.stringAt(entry, "name");
             Map<String, Object> record = Json.mapAt(entry, "record");
             tests.add(DynamicTest.dynamicTest(name, () -> {
-                for (String required : List.of("id", "use_case", "model", "status", "started_at")) {
+                for (String required : List.of("id", "prompt_key", "model", "status", "started_at")) {
                     assertNotNull(record.get(required), name + " is missing " + required);
                 }
                 assertTrue(UuidV7.isUuidV7(Json.stringAt(record, "id")),
@@ -90,7 +90,7 @@ class LogRecordConformanceTest {
                         "field " + key);
             }
         });
-        assertEquals(Map.of("name", "prompton-java", "version", "0.4.1"), actual.get("sdk"));
+        assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), actual.get("sdk"));
         assertTrue(UuidV7.isUuidV7(Json.stringAt(actual, "id")));
         assertNotNull(actual.get("latency_ms"));
 
@@ -134,7 +134,7 @@ class LogRecordConformanceTest {
 
             Map<String, Object> actual = prompton.capturedLogs().get(0);
             assertFalse(actual.isEmpty());
-            assertEquals(Json.stringAt(golden, "use_case"), actual.get("use_case"));
+            assertEquals(Json.stringAt(golden, "prompt_key"), actual.get("prompt_key"));
             return actual;
         }
     }

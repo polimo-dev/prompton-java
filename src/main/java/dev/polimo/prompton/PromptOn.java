@@ -112,7 +112,7 @@ public final class PromptOn implements AutoCloseable {
     }
 
     /**
-     * Resolves on the server with {@code POST /renders/{key}/render}, returning the raw templates.
+     * Resolves on the server with {@code POST /prompts/{key}/render}, returning the raw templates.
      *
      * <p>The answer is cached for the prompt document TTL per prompt, prompt and environment; render it
      * locally with {@link UseCase#messages(Map)} or {@link UseCase#text(Map)}. Use it as a smoke
@@ -162,7 +162,7 @@ public final class PromptOn implements AutoCloseable {
      * raised.
      *
      * @param record the record to send
-     * @throws PromptOnException when {@code use_case}, {@code model}, {@code status} or
+     * @throws PromptOnException when {@code prompt_key}, {@code model}, {@code status} or
      *     {@code started_at} is missing
      */
     public void log(LogRecord record) {
@@ -196,21 +196,21 @@ public final class PromptOn implements AutoCloseable {
      *
      * @param events up to 500 event maps
      */
-    public void logEvents(List<Map<String, Object>> events) {
-        logEvents(events, config.environment());
+    public EventLogResult logEvents(List<Map<String, Object>> events) {
+        return logEvents(events, config.environment());
     }
 
     /** Sends tool-attempt and completion trace events for a specific environment. */
-    public void logEvents(List<Map<String, Object>> events, String environment) {
+    public EventLogResult logEvents(List<Map<String, Object>> events, String environment) {
         List<Map<String, Object>> prepared = prepareEvents(events);
         if (config.mode() == Mode.TEST) {
             capturedEvents.addAll(prepared);
-            return;
+            return new EventLogResult(prepared.size(), 0, List.of());
         }
         if (!config.remoteEnabled()) {
-            return;
+            return EventLogResult.EMPTY;
         }
-        postEvents(prepared, environment == null ? config.environment() : environment);
+        return postEvents(prepared, environment == null ? config.environment() : environment);
     }
 
     private List<Map<String, Object>> prepareEvents(List<Map<String, Object>> events) {
@@ -272,7 +272,7 @@ public final class PromptOn implements AutoCloseable {
         return metadata;
     }
 
-    private void postEvents(List<Map<String, Object>> events, String environment) {
+    private EventLogResult postEvents(List<Map<String, Object>> events, String environment) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("logs", List.of());
         body.put("events", events);
@@ -291,12 +291,45 @@ public final class PromptOn implements AutoCloseable {
                 throw new PromptOnException("event log submission failed with HTTP "
                         + response.status() + ": " + response.body());
             }
+            return parseEventLogResult(response.body());
         } catch (IOException | RuntimeException e) {
             if (e instanceof PromptOnException pe) {
                 throw pe;
             }
             throw new PromptOnException("event log submission failed: " + e.getMessage(), e);
         }
+    }
+
+    private static EventLogResult parseEventLogResult(String body) {
+        Map<String, Object> envelope;
+        try {
+            envelope = Json.parseObject(body);
+        } catch (RuntimeException e) {
+            throw new PromptOnException("event log submission returned invalid JSON: " + e.getMessage(), e);
+        }
+        Map<String, Object> counters = Json.mapAt(envelope, "events");
+        if (counters == null) {
+            counters = envelope;
+        }
+        return new EventLogResult(
+                Json.intAt(counters, "accepted", 0),
+                Json.intAt(counters, "duplicates", 0),
+                rejectedRecords(counters));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> rejectedRecords(Map<String, Object> counters) {
+        List<Object> raw = Json.listAt(counters, "rejected");
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>(raw.size());
+        for (Object entry : raw) {
+            if (entry instanceof Map<?, ?> map) {
+                out.add(Collections.unmodifiableMap((Map<String, Object>) Json.deepCopy(map)));
+            }
+        }
+        return Collections.unmodifiableList(out);
     }
 
     /** Sends everything queued and waits, up to the configured shutdown timeout. */

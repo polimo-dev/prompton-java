@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * The local resolution algorithm: prompt document + prompt key (+ prompt name) → {@link UseCase}.
  *
- * <p>A pure function, and the same two lookups the server runs for {@code POST /renders/{key}/render}:
+ * <p>A pure function, and the same two lookups the server runs for {@code POST /prompts/{key}/render}:
  *
  * <pre>
  * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved

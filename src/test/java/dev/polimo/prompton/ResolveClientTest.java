@@ -12,7 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The {@code POST /renders/{key}/render} path: its cache, and how it turns PromptOn's errors into exceptions. */
+/** The {@code POST /prompts/{key}/render} path: its cache, and how it turns PromptOn's errors into exceptions. */
 class ResolveClientTest {
 
     private static final String GREETING = """
@@ -200,7 +200,7 @@ class ResolveClientTest {
     void anUnknownUseCaseErrorUsesTheCanonicalKeyDetail() {
         server.handle(request -> StubServer.Reply.of(404,
                 "{\"error\":{\"code\":\"not_found\",\"message\":\"unknown prompt\","
-                        + "\"details\":{\"reason\":\"unknown_use_case\",\"key\":\"nope\"}}}"));
+                        + "\"details\":{\"reason\":\"unknown_prompt\",\"key\":\"nope\"}}}"));
         try (PromptOn prompton = client()) {
             UseCaseException e = assertThrows(UseCaseException.class,
                     () -> prompton.useCaseRemote("nope", null));

@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
- * The {@code POST /renders/{key}/render} client: the simple path, and the smoke test that proves
+ * The {@code POST /prompts/{key}/render} client: the simple path, and the smoke test that proves
  * a prompt resolves.
  *
  * <p>It is not for a hot loop — that is what the prompt document cache is for. Called without variables it
@@ -60,9 +60,9 @@ final class ResolveClient {
                 return cached.value();
             }
             throw new PromptOnException(config.mode() == Mode.LIVE
-                    ? "POST /renders/{key}/render needs an API key; configure one or load a prompt "
+                    ? "POST /prompts/{key}/render needs an API key; configure one or load a prompt "
                             + "from the cached document"
-                    : "POST /renders/{key}/render is not available in "
+                    : "POST /prompts/{key}/render is not available in "
                             + config.mode().name().toLowerCase(java.util.Locale.ROOT)
                             + " mode; load a prompt from the cached document instead");
         }
@@ -71,7 +71,7 @@ final class ResolveClient {
             if (cached != null) {
                 return cached.value();
             }
-            throw new PromptOnException("PromptOn asked /renders/{key}/render to wait until " + pause
+            throw new PromptOnException("PromptOn asked /prompts/{key}/render to wait until " + pause
                     + " and nothing is cached for " + key
                     + "; load a prompt from the cached document instead");
         }
@@ -92,7 +92,7 @@ final class ResolveClient {
 
         HttpResponse response;
         try {
-            String path = "/renders/" + URLEncoder.encode(useCase, StandardCharsets.UTF_8)
+            String path = "/prompts/" + URLEncoder.encode(useCase, StandardCharsets.UTF_8)
                     .replace("+", "%20") + "/render";
             response = config.httpClient().send(new HttpRequest(
                     "POST", config.baseUrl() + path, headers, Json.write(body),
@@ -100,7 +100,7 @@ final class ResolveClient {
         } catch (IOException | RuntimeException e) {
             Duration wait = backOff(null);
             if (cached != null) {
-                LOG.warning("[PromptOn] /renders/{key}/render is unreachable (" + e
+                LOG.warning("[PromptOn] /prompts/{key}/render is unreachable (" + e
                         + "); serving the cached answer and not calling again for "
                         + wait.toSeconds() + "s");
                 return cached.value();
@@ -112,7 +112,7 @@ final class ResolveClient {
         if (status == 429 || status >= 500) {
             Duration wait = backOff(Backoff.retryAfterFrom(response));
             if (cached != null) {
-                LOG.warning("[PromptOn] /renders/{key}/render answered HTTP " + status
+                LOG.warning("[PromptOn] /prompts/{key}/render answered HTTP " + status
                         + "; serving the cached answer and not calling again for "
                         + wait.toSeconds() + "s");
                 return cached.value();
@@ -168,6 +168,7 @@ final class ResolveClient {
                 .provider(Json.stringAt(body, "provider"))
                 .params(Params.mergeTools(Json.mapAt(body, "params"), Json.mapAt(body, "tools")))
                 .providerOptions(Json.mapAt(body, "provider_options"))
+                .providerPreparedRequest(Json.mapAt(body, "request"))
                 .promptVersionId(version == null ? null : Json.stringAt(version, "id"))
                 .promptVersionNumber(version == null ? null : Json.intAt(version, "number", null))
                 .source(source == null ? Source.REMOTE : Source.from(source))

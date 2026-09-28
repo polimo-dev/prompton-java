@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## 0.4.2
+
+Patch release aligning native tool prompts and monitoring events with the verified preview runtime contract.
+
+### Fixed
+
+- Preserve native chat messages, including explicit `null` content, tool-result messages, and empty `tool_calls` arrays, through local and remote rendering.
+- Send monitoring-log identity as `prompt_key` and selected template evidence as `template`.
+- Return `EventLogResult` from `logEvents`, parsing nested event acceptance, duplicate, and rejection counts from `/logs`.
+- Preserve the server-rendered provider request on remote prompts with `providerPreparedRequest()`.
+
 ## 0.4.1
 
 Patch release correcting the SDK wire contract to the current PromptOn runtime API.

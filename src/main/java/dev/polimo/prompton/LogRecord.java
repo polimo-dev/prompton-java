@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * One monitoring log: what your app asked for, what came back, and how long it took.
  *
- * <p>{@code use_case}, {@code model}, {@code status} and {@code started_at} are required;
+ * <p>{@code prompt_key}, {@code model}, {@code status} and {@code started_at} are required;
  * {@link PromptOn#log(LogRecord)} fills in {@code id} (a UUIDv7, the idempotency key),
  * {@code sdk} and — when a {@link UseCase} is attached — {@code deployment_id},
  * {@code deployment_revision}, {@code prompt}, {@code prompt_version_id}, {@code model_id},
@@ -69,7 +69,7 @@ public final class LogRecord {
 
     /** The prompt key. */
     public String key() {
-        Object useCase = fields.get("use_case");
+        Object useCase = fields.get("prompt_key");
         return useCase == null ? null : String.valueOf(useCase);
     }
 
@@ -100,7 +100,7 @@ public final class LogRecord {
      * @throws PromptOnException when one is missing
      */
     public void validate() {
-        for (String required : List.of("use_case", "model", "status", "started_at")) {
+        for (String required : List.of("prompt_key", "model", "status", "started_at")) {
             Object value = fields.get(required);
             if (value == null || (value instanceof String s && s.isBlank())) {
                 throw new PromptOnException(
@@ -125,7 +125,7 @@ public final class LogRecord {
 
         /** @param value the prompt key */
         public Builder key(String value) {
-            fields.put("use_case", value);
+            fields.put("prompt_key", value);
             return this;
         }
 
@@ -263,7 +263,7 @@ public final class LogRecord {
 
         /** @param value the prompt name that was used */
         public Builder prompt(String value) {
-            fields.put("prompt", value);
+            fields.put("template", value);
             return this;
         }
 
