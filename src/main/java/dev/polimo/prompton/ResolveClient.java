@@ -160,7 +160,7 @@ final class ResolveClient {
                 .key(Json.stringAt(body, "key"))
                 .kind(UseCaseKind.from(Json.stringAt(body, "kind")))
                 .deploymentId(deployment == null ? null : Json.stringAt(deployment, "id"))
-                .deploymentRevision(deployment == null ? null : Json.intAt(deployment, "revision", null))
+                .deploymentRevision(deployment == null ? null : Json.revisionAt(deployment, "revision"))
                 .prompt(Json.stringAt(body, "template"))
                 .promptNames(prompts)
                 .model(Json.stringAt(body, "model"))

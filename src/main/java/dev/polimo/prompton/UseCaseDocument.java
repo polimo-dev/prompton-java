@@ -44,7 +44,7 @@ public final class UseCaseDocument {
      *
      * @param id the revision's UUID
      * @param useCaseKey the prompt it pins
-     * @param revision the revision number, which increases on every deploy and rollback
+     * @param revision the UTC-date revision label, for example {@code v2026.09.30-1}
      * @param modelId the catalog UUID of the model it pins
      * @param params the params layered over the prompt's defaults
      * @param providerOptions the provider options layered over the model's
@@ -53,7 +53,7 @@ public final class UseCaseDocument {
     public record Deployment(
             String id,
             String useCaseKey,
-            Integer revision,
+            String revision,
             String modelId,
             Map<String, Object> params,
             Map<String, Object> providerOptions,
@@ -272,7 +272,7 @@ public final class UseCaseDocument {
         return new Deployment(
                 Json.stringAt(raw, "id"),
                 useCaseKey == null ? key : useCaseKey,
-                Json.intAt(raw, "revision", null),
+                Json.revisionAt(raw, "revision"),
                 Json.stringAt(raw, "model_id"),
                 frozen(params),
                 frozen(providerOptions),

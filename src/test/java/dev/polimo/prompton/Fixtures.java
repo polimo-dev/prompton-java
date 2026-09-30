@@ -45,7 +45,7 @@ final class Fixtures {
               "deployments": {
                 "greeting": {
                   "id": "0198f2a1-0000-7000-8000-00000000d001",
-                  "revision": 3,
+                  "revision": "v2026.09.30-3",
                   "model_id": "0198f2a1-0000-7000-8000-00000000e001",
                   "params": {"temperature": 0.2},
                   "provider_options": {"allow_fallbacks": true},
@@ -56,7 +56,7 @@ final class Fixtures {
                 },
                 "summarize": {
                   "id": "0198f2a1-0000-7000-8000-00000000d002",
-                  "revision": 1,
+                  "revision": "v2026.09.30-1",
                   "model_id": "0198f2a1-0000-7000-8000-00000000e001",
                   "params": {},
                   "provider_options": {},
@@ -64,7 +64,7 @@ final class Fixtures {
                 },
                 "embed": {
                   "id": "0198f2a1-0000-7000-8000-00000000d003",
-                  "revision": 2,
+                  "revision": "v2026.09.30-2",
                   "model_id": "0198f2a1-0000-7000-8000-00000000e002",
                   "params": {},
                   "provider_options": {},

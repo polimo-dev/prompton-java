@@ -255,8 +255,8 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the deployment revision number */
-        public Builder deploymentRevision(Integer value) {
+        /** @param value the deployment revision label */
+        public Builder deploymentRevision(String value) {
             fields.put("deployment_revision", value);
             return this;
         }

@@ -347,7 +347,7 @@ class MonitoringLogTest {
             assertEquals("ok", logged.get("status"));
             assertEquals("stop", logged.get("stop_kind"));
             assertEquals("chat", logged.get("kind"));
-            assertEquals(3, logged.get("deployment_revision"));
+            assertEquals("v2026.09.30-3", logged.get("deployment_revision"));
             assertEquals("default", logged.get("template"));
             assertEquals("OpenAI", logged.get("upstream_provider"));
             assertEquals(Map.of("language", "en"), logged.get("context"));

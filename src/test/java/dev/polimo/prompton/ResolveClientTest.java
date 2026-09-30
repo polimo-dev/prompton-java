@@ -17,7 +17,7 @@ class ResolveClientTest {
 
     private static final String GREETING = """
         {"key":"greeting","kind":"chat",
-         "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d001","revision":3},
+         "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d001","revision": "v2026.09.30-3"},
          "template":"default","template_names":["default","ko"],
          "model_id":"0198f2a1-0000-7000-8000-00000000e001","model":"openai/gpt-4o-mini",
          "provider":"openrouter",

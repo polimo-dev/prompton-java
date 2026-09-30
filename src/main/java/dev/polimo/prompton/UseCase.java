@@ -22,7 +22,7 @@ public final class UseCase {
     private final String key;
     private final UseCaseKind kind;
     private final String deploymentId;
-    private final Integer deploymentRevision;
+    private final String deploymentRevision;
     private final String prompt;
     private final List<String> promptNames;
     private final String model;
@@ -97,8 +97,8 @@ public final class UseCase {
         return deploymentId;
     }
 
-    /** The revision number of that deployment. */
-    public Integer deploymentRevision() {
+    /** The UTC-date deployment revision label, for example {@code v2026.09.30-1}. */
+    public String deploymentRevision() {
         return deploymentRevision;
     }
 
@@ -261,7 +261,7 @@ public final class UseCase {
         private String key;
         private UseCaseKind kind = UseCaseKind.CHAT;
         private String deploymentId;
-        private Integer deploymentRevision;
+        private String deploymentRevision;
         private String prompt;
         private List<String> promptNames = List.of();
         private String model;
@@ -332,8 +332,8 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the deployment revision */
-        public Builder deploymentRevision(Integer value) {
+        /** @param value the deployment revision label */
+        public Builder deploymentRevision(String value) {
             this.deploymentRevision = value;
             return this;
         }
