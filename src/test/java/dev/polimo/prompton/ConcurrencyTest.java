@@ -42,7 +42,7 @@ class ConcurrencyTest {
     @Test
     void manyThreadsResolveRenderAndLogAgainstOneClient() throws Exception {
         server.handle(request -> {
-            if (request.path().endsWith("/prompts")) {
+            if (request.path().contains("/prompts/")) {
                 return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"");
             }
             int count = Json.listAt(Json.parseObject(request.body()), "logs").size();
@@ -106,7 +106,7 @@ class ConcurrencyTest {
     }
 
     @Test
-    void aSlowRefreshNeverBlocksOrFailsAGeneration() throws Exception {
+    void aSlowDemandFetchUsesOneSharedAttemptAndNeverFailsAGeneration() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         server.handle(request -> {
             if (calls.incrementAndGet() > 1) {
@@ -114,21 +114,26 @@ class ConcurrencyTest {
             }
             return StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v" + calls.get() + "\"");
         });
+        AtomicReference<Instant> clock = new AtomicReference<>(Instant.parse("2026-09-04T09:00:00Z"));
+        SnapshotStore.useClockForTests(clock::get);
         try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
                 .apiKey("k").baseUrl(server.baseUrl()).environment("production")
                 .project("sdkfixture").diskCacheEnabled(false)
                 .pollingEnabled(false).cacheTtl(Duration.ofMillis(10))
                 .requestTimeout(Duration.ofSeconds(5)).build())) {
             prompton.useCase("greeting");
-            Thread.sleep(30);
+            clock.updateAndGet(now -> now.plusMillis(10_100));
 
             long startedAt = System.nanoTime();
             for (int i = 0; i < 200; i++) {
                 assertNotNull(prompton.useCase("greeting").model());
             }
             long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
-            assertTrue(elapsedMillis < 300,
-                    "resolving while a refresh is in flight took " + elapsedMillis + "ms");
+            assertTrue(elapsedMillis < 1_300,
+                    "resolving while a demand fetch is in flight took " + elapsedMillis + "ms");
+            assertEquals(2, calls.get(), "one expired key produced one shared fetch");
+        } finally {
+            SnapshotStore.useClockForTests(null);
         }
     }
 

@@ -2,7 +2,7 @@ package dev.polimo.prompton;
 
 /** How much of the outside world the SDK is allowed to touch. */
 public enum Mode {
-    /** Normal operation: poll PromptOn, mirror to disk, send monitoring logs. */
+    /** Normal operation: fetch requested prompt config on demand, mirror to disk, send monitoring logs. */
     LIVE,
     /** No HTTP at all. Use-case documents are installed by the test, and logs are captured for assertions. */
     TEST,

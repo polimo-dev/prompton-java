@@ -88,7 +88,7 @@ class MonitoringLogTest {
                 Map<String, Object> map = Conformance.map(entry);
                 assertTrue(UuidV7.isUuidV7(String.valueOf(map.get("id"))),
                         "the id must be a UUIDv7, not a v4: " + map.get("id"));
-                assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), map.get("sdk"));
+                assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), map.get("sdk"));
             }
         }
     }
@@ -469,8 +469,8 @@ class MonitoringLogTest {
             Map<String, Object> sent = Conformance.map(Json.listAt(body, "events").get(0));
             assertTrue(UuidV7.isUuidV7(String.valueOf(sent.get("event_id"))));
             assertNotNull(sent.get("observed_at"));
-            assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), sent.get("sdk"));
-            assertEquals(Map.of("version", "0.4.2"), Conformance.map(sent.get("metadata")).get("sdk"));
+            assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), sent.get("sdk"));
+            assertEquals(Map.of("version", "0.5.0"), Conformance.map(sent.get("metadata")).get("sdk"));
             assertEquals(Map.of("query", "mood"), sent.get("arguments"));
             assertEquals(List.of(Map.of("title", "today")), sent.get("result"));
         }

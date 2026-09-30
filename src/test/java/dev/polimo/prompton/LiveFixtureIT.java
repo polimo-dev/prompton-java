@@ -309,7 +309,7 @@ class LiveFixtureIT {
         record.put("stop_kind", "stop");
         record.put("latency_ms", 842);
         record.put("trace_id", "java-sdk-live-test");
-        record.put("sdk", Map.of("name", "prompton-java", "version", "0.4.2"));
+        record.put("sdk", Map.of("name", "prompton-java", "version", "0.5.0"));
         return record;
     }
 

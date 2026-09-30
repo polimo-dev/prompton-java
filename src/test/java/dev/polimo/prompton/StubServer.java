@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 /**
@@ -74,7 +75,7 @@ final class StubServer implements AutoCloseable {
             throw new IllegalStateException("could not start the stub server", e);
         }
         server.createContext("/", this::dispatch);
-        server.setExecutor(null);
+        server.setExecutor(Executors.newCachedThreadPool());
         server.start();
     }
 

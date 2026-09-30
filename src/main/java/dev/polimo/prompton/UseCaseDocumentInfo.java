@@ -11,7 +11,7 @@ import java.time.Instant;
  * @param etag the ETag of the document in memory
  * @param lastModified the {@code Last-Modified} PromptOn reported for it
  * @param fetchedAt when this process obtained it
- * @param stale whether the last refresh failed, or the document did not come from PromptOn
+ * @param stale whether the last config fetch failed, or the document did not come from PromptOn
  * @param ageSeconds how old the document is, in seconds
  * @param project the project the document belongs to
  * @param environment the environment it describes

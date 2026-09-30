@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * A parsed {@code GET /prompts} document — everything live in one environment.
+ * A parsed PromptOn prompt document — either a bundle or one demand-fetched prompt key.
  *
  * <p>The SDK reads schema versions 4 through 7. The {@code schema_version} field must be a JSON
  * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}

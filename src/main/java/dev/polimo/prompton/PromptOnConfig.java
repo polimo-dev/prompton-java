@@ -30,7 +30,7 @@ public final class PromptOnConfig {
     public static final String SDK_NAME = "prompton-java";
 
     /** The SDK's version. */
-    public static final String SDK_VERSION = "0.4.2";
+    public static final String SDK_VERSION = "0.5.0";
 
     private final String apiKey;
     private final String baseUrl;
@@ -122,7 +122,7 @@ public final class PromptOnConfig {
         return project;
     }
 
-    /** How long a prompt document is served from memory before a refresh is due. */
+    /** TTL/backoff base for cached server-render answers; config fetch uses a fixed ten-second gate. */
     public Duration cacheTtl() {
         return cacheTtl;
     }
@@ -137,12 +137,12 @@ public final class PromptOnConfig {
         return connectTimeout;
     }
 
-    /** How long the first {@code useCase} waits for the very first prompt document fetch. */
+    /** Deprecated compatibility setting. Demand config fetches use a fixed one-second budget. */
     public Duration initialFetchTimeout() {
         return initialFetchTimeout;
     }
 
-    /** The ceiling of the exponential backoff after a failed poll or a failed send. */
+    /** The ceiling of exponential backoff for monitoring-log sends and server-render helpers. */
     public Duration maxBackoff() {
         return maxBackoff;
     }
@@ -202,7 +202,7 @@ public final class PromptOnConfig {
         return shutdownFlushTimeout;
     }
 
-    /** Whether the background poll loop runs. Off means refreshes happen on the next prompt read. */
+    /** Deprecated compatibility setting. Prompt config is always fetched on demand per key. */
     public boolean pollingEnabled() {
         return pollingEnabled;
     }
@@ -242,7 +242,7 @@ public final class PromptOnConfig {
         private Duration cacheTtl = Duration.ofSeconds(10);
         private Duration requestTimeout = Duration.ofSeconds(5);
         private Duration connectTimeout = Duration.ofSeconds(5);
-        private Duration initialFetchTimeout = Duration.ofSeconds(3);
+        private Duration initialFetchTimeout = Duration.ofSeconds(1);
         private Duration maxBackoff = Duration.ofMinutes(5);
         private Path diskCachePath;
         private boolean diskCacheEnabled = true;
@@ -256,7 +256,7 @@ public final class PromptOnConfig {
         private int logMaxBuffer = 10_000;
         private int logMaxAttempts = 8;
         private Duration shutdownFlushTimeout = Duration.ofSeconds(5);
-        private boolean pollingEnabled = true;
+        private boolean pollingEnabled;
         private PromptOnHttpClient httpClient;
         private PayloadPolicy payloadDefaults = PayloadPolicy.DEFAULT;
 
@@ -292,7 +292,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value how long a prompt document is served from memory before a refresh is due */
+        /** @param value TTL/backoff base for cached server-render answers, not runtime config fetch */
         public Builder cacheTtl(Duration value) {
             this.cacheTtl = value;
             return this;
@@ -310,7 +310,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value how long the first {@code useCase} waits for the first fetch */
+        /** @param value deprecated; demand config fetches use a fixed one-second budget */
         public Builder initialFetchTimeout(Duration value) {
             this.initialFetchTimeout = value;
             return this;
@@ -395,7 +395,7 @@ public final class PromptOnConfig {
             return this;
         }
 
-        /** @param value {@code false} to refresh on the next prompt read instead of on a timer */
+        /** @param value deprecated; no background config polling is started */
         public Builder pollingEnabled(boolean value) {
             this.pollingEnabled = value;
             return this;

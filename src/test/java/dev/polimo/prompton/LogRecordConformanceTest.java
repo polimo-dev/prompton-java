@@ -90,7 +90,7 @@ class LogRecordConformanceTest {
                         "field " + key);
             }
         });
-        assertEquals(Map.of("name", "prompton-java", "version", "0.4.2"), actual.get("sdk"));
+        assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), actual.get("sdk"));
         assertTrue(UuidV7.isUuidV7(Json.stringAt(actual, "id")));
         assertNotNull(actual.get("latency_ms"));
 

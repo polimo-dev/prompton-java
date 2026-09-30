@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.4.2")
+    implementation("dev.polimo:prompton-sdk:0.5.0")
 }
 ```
 
@@ -49,7 +49,7 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.4.2</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
@@ -73,7 +73,7 @@ try (PromptOn prompton = PromptOn.create()) {                      // reads PTN_
 }
 ```
 
-Build one `PromptOn` per process — it owns a poll loop and a log-sender thread — share it across
+Build one `PromptOn` per process — it owns the prompt config cache and a log-sender thread — share it across
 threads, and `close()` it on shutdown so the last logs are flushed. `examples/` has a runnable
 version that works with or without a server:
 
@@ -93,10 +93,10 @@ Precedence is **explicit option > environment variable > default**.
 | `baseUrl` | — | `host + "/api/v1"` | Set it when your API base is not under the host root |
 | `environment` | `PTN_ENVIRONMENT` | `production` | Sent as `?environment=`, and the guard that stops a staging process booting on a production document |
 | `project` | `PTN_PROJECT` | read out of the API key | Names the disk cache, and guards against another project's document |
-| `cacheTtl` | — | 10 s | How long a prompt document is served from memory before a refresh is due; also the base of the poll backoff |
+| `cacheTtl` | — | 10 s | TTL/backoff base for `/prompts/{key}/render` cached server-render answers; runtime config fetch always uses the SDK fixed 10 s freshness and attempt gate |
 | `requestTimeout` | — | 5 s | Read timeout for PromptOn's own calls |
 | `connectTimeout` | — | 5 s | Connect timeout of the default HTTP client |
-| `initialFetchTimeout` | — | 3 s | How long the very first `useCase` waits when nothing is cached yet |
+| `initialFetchTimeout` | — | 1 s | Deprecated compatibility option; config fetches use a one-second total budget |
 | `maxBackoff` | — | 5 min | Ceiling of every exponential backoff |
 | `diskCachePath` | — | OS cache dir, `prompton/prompts-<project>-<environment>.json` | Where the prompt document is mirrored |
 | `diskCacheEnabled` | — | `true` | `false` keeps the SDK entirely in memory |
@@ -110,7 +110,7 @@ Precedence is **explicit option > environment variable > default**.
 | `logMaxBuffer` | — | 10 000 | Queue cap; over it the oldest are dropped and counted |
 | `logMaxAttempts` | — | 8 | How many times one batch is retried before it is dropped and counted |
 | `shutdownFlushTimeout` | — | 5 s | How long `close()` spends draining |
-| `pollingEnabled` | — | `true` | `false` refreshes on the next `useCase` instead of on a timer — for serverless |
+| `pollingEnabled` | — | `false` | Deprecated compatibility option; config is always fetched on demand per prompt key |
 | `httpClient` | — | `JdkHttpClient` | Route PromptOn's own calls through your own HTTP stack |
 | `payloadDefaults` | — | full, no sampling, 256 KiB | The payload policy used when the prompt document declares none |
 
@@ -125,7 +125,10 @@ PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
 
 ## Resolving and rendering
 
-`useCase` reads the prompt document in memory: no HTTP call, no lock, no blocking.
+`useCase` reads the key's cached configuration. Inside the 10-second TTL it is a memory lookup. When
+the key is stale or missing, the SDK makes one `GET /prompts/{key}?environment=...` attempt for that
+key and waits up to one second; if that fails or times out, it returns the last valid value, even if
+expired. With no cached value at all, it raises a normal `UseCaseException`.
 
 ```java
 UseCase useCase = prompton.useCase("support_reply");      // the "default" prompt
@@ -221,7 +224,7 @@ prompton.log(LogRecord.builder()
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.4.2"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.5.0"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 
@@ -251,32 +254,29 @@ and written atomically (temporary file, then rename) with a sidecar holding the 
 `Last-Modified`; then an optional prompt document bundled into your application. Whichever answered is
 reported as `source`.
 
-**A ten-second cache.** Within the TTL every `useCase` call is served from memory with no HTTP call at
-all. Once it has passed the SDK refreshes in the background with `GET /prompts` and
-`If-None-Match`, where a `304` means there is nothing to parse. A refresh never blocks a provider call
-and never fails one: while it is in flight, and if it fails, the previous document keeps serving.
+**A fixed ten-second per-key config cache.** Within the TTL every `useCase("key")` call is served from memory with
+no HTTP call. Once it has passed, the next caller for that key attempts
+`GET /prompts/{key}?environment=...` with that key's `If-None-Match`. A `304` marks the cached value
+fresh. Other keys are independent and are never serialized behind a slow key.
 
-**Rate limits and failures.** A `429` is honoured to the second from `Retry-After` (falling back to
-`error.details.retry_after`, then to backoff) and no request is made before it has elapsed — not by
-the poll loop, not by a refresh a `useCase` call had already queued, and not by a thousand
-concurrent calls. A 5xx, a timeout or a transport failure backs off by doubling from the TTL up to
-five minutes. A burst of `useCase` calls arriving on an expired TTL is one refresh, never one fetch
-per caller.
-In every case the caller sees the previous configuration, not an error.
+**One-second budget and stale fallback.** Config fetch has a one-second total deadline, including
+response body reading, and the SDK does not retry it. If a request fails, times out, returns an
+invalid document, or returns a document for the wrong project/environment/key, the last valid value
+keeps serving even when expired. The failed attempt still starts the 10-second per-key attempt gate.
+If there is no cached value, the call fails explicitly.
 
-**A cold start during an outage is survivable.** If the very first fetch fails and there is no disk
-cache and no bundle, that `useCase` call fails — there is nothing to answer with — but the failure is not
-permanent: once the backoff has elapsed the next `useCase` call attempts a fresh fetch and the process
-recovers by itself, with polling on or off.
+**Same-key single-flight.** Concurrent callers for the same prompt key share the same in-flight fetch
+and original deadline. The SDK may still perform separate LLM/provider calls afterwards; only the
+PromptOn config lookup is shared.
 
 **Never the wrong document.** A prompt document whose `environment` or `project` does not match this
 process is ignored, wherever it came from — so a staging build cannot boot on a production bundle.
-A schema version older than 4 is refused and the SDK keeps polling for one it understands. A corrupt
+A schema version older than 4 is refused. A corrupt
 or half-written file is ignored rather than fatal, which is what makes it safe for several processes
 on one host to share the disk cache.
 
 **No external services, ever.** Memory, one local file, and the bundled file are the only tiers.
-Instances never coordinate; each keeps its own copy, which ETag polling makes cheap.
+Instances never coordinate; each keeps its own per-key copy.
 
 ### Building the bundle
 
@@ -286,22 +286,19 @@ environment:
 ```java
 try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
         .apiKey(System.getenv("PTN_API_KEY")).environment("production").build())) {
-    prompton.refresh();
+    prompton.useCase("support_reply");
     prompton.exportUseCaseDocument(Path.of("src/main/resources/prompts.production.json"));
 }
 ```
 
 Then point the SDK at it with `bundlePath(...)`. The `.meta.json` sidecar carries the ETag,
-`Last-Modified`, project and environment, so the first poll can seed `If-None-Match` and
+`Last-Modified`, project and environment, so the first demand fetch can seed `If-None-Match` and
 `useCaseDocumentInfo()` can report how old the bundle really is.
 
 ### Serverless and short-lived processes
 
-Set `pollingEnabled(false)`: there is no timer, and the refresh happens on the next `useCase` call once
-the TTL has passed — including the retry after a failed first fetch, so an instance that started
-while PromptOn was down still recovers on a later call. On a runtime with no writable disk also set
-`diskCacheEnabled(false)` and rely on `bundlePath` — there the bundle is the primary fallback, not a
-nicety.
+There is no config polling timer. On a runtime with no writable disk set `diskCacheEnabled(false)`
+and rely on `bundlePath` — there the bundle is the primary fallback, not a nicety.
 
 ### Prove it
 
@@ -318,7 +315,7 @@ log.info("prompton prompt document: source={} age={}s stale={} etag={}",
 
 | What happens | What the SDK does | What your app sees |
 |---|---|---|
-| PromptOn is slow, down, or answers 5xx while a document is cached | Keeps serving it, marks it stale, backs off ×2 from the TTL to 5 min | Nothing. Config is stale at worst |
+| PromptOn is slow, down, or answers 5xx while a document is cached | Keeps serving it, marks it stale, and gates the next config attempt for the fixed 10 s window | Nothing. Config is stale at worst |
 | PromptOn answers `429` | Waits out `Retry-After` before contacting the server again | Nothing |
 | PromptOn is unreachable and memory, disk and bundle are all empty | — | `UseCaseException` with reason `NOT_READY` and a message saying PromptOn is unreachable and nothing is cached |
 | The disk cache or the bundle is corrupt, truncated, or for another environment or project | Ignores it and falls through to the next tier | Nothing, unless no tier is left |

@@ -35,11 +35,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <p>PromptOn is never in the request path: the provider call above is yours, with your key and
- * your HTTP client. {@link #useCase(String)} reads a prompt document held in memory, refreshed in the background,
- * mirrored to disk and backed by a file you can ship inside the application — so if PromptOn is
- * unreachable your app keeps generating on the last configuration it saw.
+ * your HTTP client. {@link #useCase(String)} fetches only the requested prompt when the in-memory
+ * value is stale or missing, with a one-second budget and stale fallback, backed by disk or a file
+ * you can ship inside the application — so if PromptOn is unreachable your app keeps generating on
+ * the last configuration it saw.
  *
- * <p>One instance owns a poll loop and a log-sender thread, so build one per process and
+ * <p>One instance owns its prompt cache and a log-sender thread, so build one per process and
  * {@link #close()} it on shutdown; it is safe to share across threads.
  */
 public final class PromptOn implements AutoCloseable {
@@ -90,8 +91,9 @@ public final class PromptOn implements AutoCloseable {
     /**
      * The prompt with a named prompt.
      *
-     * <p>Reads the prompt document in memory: no HTTP call, no blocking, unless nothing has been loaded
-     * yet and the very first fetch is still in flight.
+     * <p>Uses the key's in-memory value within the cache TTL. When the value is stale or missing,
+     * this performs one {@code GET /prompts/:key} attempt for that key and waits up to one second
+     * before falling back to the last valid value.
      *
      * @param useCase the prompt key
      * @param promptName the prompt name, or {@code null} for {@code default}
@@ -100,7 +102,7 @@ public final class PromptOn implements AutoCloseable {
      *     the prompt document, or when nothing is cached and PromptOn is unreachable
      */
     public UseCase useCase(String useCase, String promptName) {
-        SnapshotStore.Entry entry = snapshots.require();
+        SnapshotStore.Entry entry = snapshots.require(useCase);
         return Resolver.resolve(
                 entry.useCaseDocument(), useCase, promptName, entry.source(), entry.etag())
                 .attachTo(this);
@@ -108,7 +110,7 @@ public final class PromptOn implements AutoCloseable {
 
     /** Every prompt name the live deployment of {@code useCase} pins, sorted. */
     public List<String> promptNames(String useCase) {
-        return snapshots.require().useCaseDocument().promptNames(useCase);
+        return snapshots.require(useCase).useCaseDocument().promptNames(useCase);
     }
 
     /**
@@ -518,7 +520,7 @@ public final class PromptOn implements AutoCloseable {
     }
 
     private PayloadPolicy policyFor(String useCase) {
-        SnapshotStore.Entry entry = snapshots.current();
+        SnapshotStore.Entry entry = snapshots.currentFor(useCase);
         if (entry == null || useCase == null) {
             return config.payloadDefaults();
         }
@@ -537,9 +539,10 @@ public final class PromptOn implements AutoCloseable {
     }
 
     /**
-     * Fetches the prompt document once, now, and waits for it — for a script, a warm-up or a test.
+     * Compatibility method from the bulk-refresh era. Runtime config is fetched on demand by
+     * {@link #useCase(String)}, so this never performs a bulk remote request.
      *
-     * @return what the refresh did; a failure is reported, not thrown
+     * @return {@link RefreshResult#SKIPPED}
      */
     public RefreshResult refresh() {
         return snapshots.refresh();
@@ -618,7 +621,7 @@ public final class PromptOn implements AutoCloseable {
         capturedEvents.clear();
     }
 
-    /** Stops the poll loop and drains the log buffer, best effort. */
+    /** Stops config-fetch workers and drains the log buffer, best effort. */
     @Override
     public void close() {
         try {

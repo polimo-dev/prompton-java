@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
 
-/** How long to wait before trying PromptOn again. Shared by the snapshot poller and the log buffer. */
+/** How long to wait before trying PromptOn again. Shared by log sending and server-render helpers. */
 final class Backoff {
 
     private Backoff() {}
