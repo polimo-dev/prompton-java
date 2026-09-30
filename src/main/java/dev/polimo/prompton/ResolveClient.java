@@ -160,7 +160,7 @@ final class ResolveClient {
                 .key(Json.stringAt(body, "key"))
                 .kind(UseCaseKind.from(Json.stringAt(body, "kind")))
                 .deploymentId(deployment == null ? null : Json.stringAt(deployment, "id"))
-                .deploymentRevision(deployment == null ? null : Json.revisionAt(deployment, "revision"))
+                .deploymentRevision(readRevision(deployment))
                 .prompt(Json.stringAt(body, "template"))
                 .promptNames(prompts)
                 .model(Json.stringAt(body, "model"))
@@ -190,6 +190,17 @@ final class ResolveClient {
             builder.textTemplate(text);
         }
         return builder.build();
+    }
+
+    private String readRevision(Map<String, Object> deployment) {
+        Object value = deployment == null ? null : deployment.get("revision");
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        throw new PromptOnException("deployment revision must be a string");
     }
 
     private RuntimeException error(HttpResponse response, String requestedKey) {

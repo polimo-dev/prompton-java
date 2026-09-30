@@ -318,7 +318,7 @@ class LiveFixtureIT {
         assertEquals(Json.stringAt(remote, "key"), local.key());
         assertEquals(Json.stringAt(remote, "kind"), local.kind().wireName());
         assertEquals(Json.stringAt(deployment, "id"), local.deploymentId());
-        assertEquals(Json.revisionAt(deployment, "revision"), local.deploymentRevision());
+        assertEquals(Json.stringAt(deployment, "revision"), local.deploymentRevision());
         assertEquals(Json.stringAt(remote, "template"), local.prompt());
         assertEquals(Json.listAt(remote, "template_names"), local.promptNames());
         assertEquals(Json.stringAt(remote, "model"), local.model());

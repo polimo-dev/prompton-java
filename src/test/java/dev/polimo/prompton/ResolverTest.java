@@ -79,6 +79,17 @@ class ResolverTest {
         assertEquals("price", pin.providerOptions().get("sort"));
     }
 
+    @Test
+    void deploymentRevisionMustBeAString() {
+        PromptOnException e = assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            {"schema_version": 7, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"id": "u1", "kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"id": "d1", "revision": 1, "model_id": "m1",
+                                          "params": {}, "provider_options": {},
+                                          "template_pins": {"default": "v1"}}}}
+            """));
+        assertTrue(e.getMessage().contains("deployment revision must be a string"));
+    }
 
     @Test
     void nativeToolMessagesSurviveRenderingAsWholeProviderMaps() {

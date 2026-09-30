@@ -272,11 +272,22 @@ public final class UseCaseDocument {
         return new Deployment(
                 Json.stringAt(raw, "id"),
                 useCaseKey == null ? key : useCaseKey,
-                Json.revisionAt(raw, "revision"),
+                readRevision(raw, "revision"),
                 Json.stringAt(raw, "model_id"),
                 frozen(params),
                 frozen(providerOptions),
                 Collections.unmodifiableMap(pins));
+    }
+
+    private static String readRevision(Map<String, Object> raw, String key) {
+        Object value = raw == null ? null : raw.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        throw new PromptOnException("deployment revision must be a string");
     }
 
     @SuppressWarnings("unchecked")

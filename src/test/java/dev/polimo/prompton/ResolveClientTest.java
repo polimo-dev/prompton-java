@@ -179,6 +179,17 @@ class ResolveClientTest {
     }
 
     @Test
+    void aNumericDeploymentRevisionFromTheServerIsInvalid() {
+        server.handle(request -> StubServer.Reply.ok(GREETING.replace(
+                "\"revision\": \"v2026.09.30-3\"", "\"revision\": 3")));
+        try (PromptOn prompton = client()) {
+            PromptOnException e = assertThrows(PromptOnException.class,
+                    () -> prompton.useCaseRemote("greeting", null));
+            assertTrue(e.getMessage().contains("deployment revision must be a string"));
+        }
+    }
+
+    @Test
     void anUnknownPromptBecomesAUseCaseExceptionListingWhatIsPinned() {
         server.handle(request -> StubServer.Reply.of(404, """
             {"error":{"code":"not_found",

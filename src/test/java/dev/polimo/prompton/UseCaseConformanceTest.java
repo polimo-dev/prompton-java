@@ -83,7 +83,7 @@ class UseCaseConformanceTest {
 
         assertEquals(Json.stringAt(expect, "key"), useCase.key(), name);
         assertEquals(Json.stringAt(expect, "deployment_id"), useCase.deploymentId(), name);
-        assertEquals(Json.revisionAt(expect, "revision"), useCase.deploymentRevision(), name);
+        assertEquals(Json.stringAt(expect, "revision"), useCase.deploymentRevision(), name);
         assertEquals(Json.stringAt(expect, "kind"), useCase.kind().wireName(), name);
         assertEquals(Json.stringAt(expect, "template"), useCase.prompt(), name);
         assertEquals(Json.listAt(expect, "template_names"), useCase.promptNames(), name);

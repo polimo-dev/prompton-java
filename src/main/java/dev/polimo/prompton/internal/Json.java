@@ -123,21 +123,6 @@ public final class Json {
         return value instanceof String s ? s : null;
     }
 
-    /**
-     * {@code map.get(key)} as a deployment revision label. Old numeric documents are normalised to
-     * the UTC-date revision format introduced on 2026-09-30.
-     */
-    public static String revisionAt(Map<String, Object> map, String key) {
-        Object value = map == null ? null : map.get(key);
-        if (value instanceof String s) {
-            return s;
-        }
-        if (value instanceof Number n) {
-            return "v2026.09.30-" + n.longValue();
-        }
-        return null;
-    }
-
     /** {@code map.get(key)} as an int, or {@code fallback}. */
     public static Integer intAt(Map<String, Object> map, String key, Integer fallback) {
         Object value = map == null ? null : map.get(key);
