@@ -127,7 +127,7 @@ public final class Template {
         for (Message message : messages) {
             if ("slot".equals(message.type())) {
                 throw TemplateException.renderError(MESSAGE_SLOT_ERROR);
-            } else if (message.contentValue() instanceof String content) {
+            } else if (message.hasContent() && message.contentValue() instanceof String content) {
                 rendered.add(message.withContent(render(content, variables, engine)));
             } else {
                 rendered.add(message);

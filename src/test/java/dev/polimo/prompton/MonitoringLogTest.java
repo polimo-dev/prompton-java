@@ -369,6 +369,17 @@ class MonitoringLogTest {
             List<Message> finalMessages = new ArrayList<>(managed);
             finalMessages.add(Message.of("assistant", "Earlier answer."));
             finalMessages.add(Message.of("user", "Thanks, continue."));
+            finalMessages.add(Message.fromMap(Map.of(
+                    "role", "assistant",
+                    "type", "native",
+                    "name", "helper",
+                    "reasoning", "opaque")));
+            Map<String, Object> explicitNull = new LinkedHashMap<>();
+            explicitNull.put("role", "assistant");
+            explicitNull.put("content", null);
+            finalMessages.add(Message.fromMap(explicitNull));
+            finalMessages.add(Message.of("assistant", ""));
+            finalMessages.add(Message.fromMap(Map.of("role", "assistant", "content", List.of())));
 
             pin.track(TrackMeta.builder()
                             .inputMessages(finalMessages)
@@ -378,11 +389,20 @@ class MonitoringLogTest {
 
             Map<String, Object> input = Conformance.map(prompton.capturedLogs().get(0).get("input"));
             List<Object> loggedMessages = Json.listAt(input, "messages");
-            assertEquals(4, loggedMessages.size());
+            assertEquals(8, loggedMessages.size());
             assertEquals(Map.of("role", "assistant", "content", "Earlier answer."),
                     Conformance.map(loggedMessages.get(2)));
             assertEquals(Map.of("role", "user", "content", "Thanks, continue."),
                     Conformance.map(loggedMessages.get(3)));
+            Map<String, Object> absentContent = Conformance.map(loggedMessages.get(4));
+            assertEquals(Map.of("role", "assistant", "type", "native", "name", "helper", "reasoning", "opaque"),
+                    absentContent);
+            assertTrue(!absentContent.containsKey("content"));
+            Map<String, Object> nullContent = Conformance.map(loggedMessages.get(5));
+            assertTrue(nullContent.containsKey("content"));
+            assertEquals(null, nullContent.get("content"));
+            assertEquals("", Conformance.map(loggedMessages.get(6)).get("content"));
+            assertEquals(List.of(), Conformance.map(loggedMessages.get(7)).get("content"));
         }
     }
 

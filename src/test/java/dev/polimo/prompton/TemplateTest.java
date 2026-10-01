@@ -73,6 +73,35 @@ class TemplateTest {
     }
 
     @Test
+    void nativeMessagesWithoutContentKeepContentAbsentDuringRenderingAndRequestSerialization() {
+        Message absent = Message.fromMap(Map.of(
+                "role", "assistant",
+                "type", "native",
+                "name", "helper",
+                "reasoning", "opaque"));
+        Map<String, Object> explicitNull = new java.util.LinkedHashMap<>();
+        explicitNull.put("role", "assistant");
+        explicitNull.put("content", null);
+        Message nullContent = Message.fromMap(explicitNull);
+        Message emptyString = Message.of("assistant", "");
+        Message emptyArray = Message.fromMap(Map.of("role", "assistant", "content", List.of()));
+
+        List<Message> rendered = Template.renderMessages(
+                List.of(absent, nullContent, emptyString, emptyArray),
+                Map.of("history", "ignored"),
+                Template.Engine.LIQUID);
+
+        Map<String, Object> absentRequest = rendered.get(0).toMap();
+        assertEquals(Map.of("role", "assistant", "type", "native", "name", "helper", "reasoning", "opaque"),
+                absentRequest);
+        assertTrue(!absentRequest.containsKey("content"));
+        assertTrue(rendered.get(1).toMap().containsKey("content"));
+        assertEquals(null, rendered.get(1).toMap().get("content"));
+        assertEquals("", rendered.get(2).toMap().get("content"));
+        assertEquals(List.of(), rendered.get(3).toMap().get("content"));
+    }
+
+    @Test
     void theRawEngineNeverParses() {
         String source = "{% include \"other\" %} {{ unclosed";
         assertEquals(source, Template.render(source, Map.of(), Template.Engine.RAW));
