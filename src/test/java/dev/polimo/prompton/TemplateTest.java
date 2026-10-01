@@ -27,6 +27,52 @@ class TemplateTest {
     }
 
     @Test
+    void messageSlotsAreRejectedBeforeRenderingForEveryEngine() {
+        Message slotWithRole = Message.fromMap(Map.of(
+                "type", "slot",
+                "role", "system",
+                "name", "history",
+                "content", "ignored"));
+
+        for (Template.Engine engine : Template.Engine.values()) {
+            TemplateException thrown = assertThrows(TemplateException.class,
+                    () -> Template.renderMessages(
+                            List.of(slotWithRole),
+                            Map.of("history", List.of(Map.of("role", "user", "content", "hi"))),
+                            engine));
+            assertEquals(TemplateException.Kind.RENDER_ERROR, thrown.kind());
+            assertEquals(Template.MESSAGE_SLOT_ERROR, thrown.getMessage());
+        }
+    }
+
+    @Test
+    void historyIsAnOrdinaryVariableName() {
+        List<Message> rendered = Template.renderMessages(
+                List.of(new Message("system", "Remember {{ history }}.", null)),
+                Map.of("history", "the user prefers concise replies"),
+                Template.Engine.LIQUID);
+
+        assertEquals("Remember the user prefers concise replies.", rendered.get(0).content());
+    }
+
+    @Test
+    void nativeMessageTypeNameAndStructuredContentSurviveRendering() {
+        Message nativeMessage = Message.fromMap(Map.of(
+                "type", "message",
+                "role", "assistant",
+                "name", "lookup",
+                "content", List.of(Map.of("type", "text", "text", "found")),
+                "provider_extra", Map.of("opaque", true)));
+
+        Message rendered = Template.renderMessages(
+                List.of(nativeMessage),
+                Map.of("history", "ignored"),
+                Template.Engine.LIQUID).get(0);
+
+        assertEquals(nativeMessage.toMap(), rendered.toMap());
+    }
+
+    @Test
     void theRawEngineNeverParses() {
         String source = "{% include \"other\" %} {{ unclosed";
         assertEquals(source, Template.render(source, Map.of(), Template.Engine.RAW));

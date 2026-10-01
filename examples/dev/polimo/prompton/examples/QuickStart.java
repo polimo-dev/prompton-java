@@ -10,6 +10,7 @@ import dev.polimo.prompton.PromptOn;
 import dev.polimo.prompton.PromptOnConfig;
 import dev.polimo.prompton.ProviderResult;
 import dev.polimo.prompton.UseCase;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -59,9 +60,12 @@ public final class QuickStart {
             System.out.println("params     : " + useCase.params());
             System.out.println("prompts    : " + useCase.promptNames());
 
-            // 2. Render this call's variables into the pinned prompt.
+            // 2. Render the messages PromptOn manages, then add the app-owned conversation state.
             Map<String, Object> variables = Map.of("name", "Ada");
-            List<Message> messages = useCase.messages(variables);
+            List<Message> managedMessages = useCase.messages(variables);
+            List<Message> messages = new ArrayList<>(managedMessages);
+            messages.add(Message.of("assistant", "Earlier answer."));
+            messages.add(Message.of("user", "Say hello to Ada."));
             System.out.println("\nrendered messages:");
             messages.forEach(message ->
                     System.out.println("  [" + message.role() + "] " + message.content()));
@@ -114,7 +118,7 @@ public final class QuickStart {
           "schema_version": 4,
           "project": "example",
           "environment": "production",
-          "use_cases": {
+          "prompts": {
             "greeting": {
               "id": "0198f2a1-0000-7000-8000-00000000c001",
               "kind": "chat",
@@ -130,7 +134,7 @@ public final class QuickStart {
               "model_id": "0198f2a1-0000-7000-8000-00000000e001",
               "params": {"temperature": 0.2},
               "provider_options": {},
-              "prompt_pins": {"default": "0198f2a1-0000-7000-8000-00000000a001"}
+              "template_pins": {"default": "0198f2a1-0000-7000-8000-00000000a001"}
             }
           },
           "prompt_versions": {

@@ -14,7 +14,7 @@ This SDK does four things and nothing else:
 
 ```
 useCase("support_reply")       -> UseCase: model, params, provider options, prompt template
-useCase.messages(variables)    -> the messages to send
+useCase.messages(variables)    -> the messages PromptOn manages
 useCase.track(meta, call)      -> times your provider call and queues a monitoring log
 flush()                        -> sends what is queued
 ```
@@ -62,11 +62,16 @@ this SDK.
 ```java
 try (PromptOn prompton = PromptOn.create()) {                      // reads PTN_HOST and PTN_API_KEY
     UseCase useCase = prompton.useCase("support_reply");        // from memory: no HTTP call
-    List<Message> messages = useCase.messages(Map.of("question", question));
+    Map<String, Object> variables = Map.of("question", question);
+    List<Message> managedMessages = useCase.messages(variables);
+    List<Message> finalMessages = new ArrayList<>(managedMessages);
+    finalMessages.addAll(conversationHistory);
+    finalMessages.add(Message.of("user", question));
+
     String answer = useCase.track(TrackMeta.builder()
-                    .inputMessages(messages).variables(Map.of("question", question)).build(),
+                    .inputMessages(finalMessages).variables(variables).build(),
             () -> {                                                // your provider, your key
-                MyReply reply = myProvider.chat(useCase.model(), messages, useCase.params());
+                MyReply reply = myProvider.chat(useCase.model(), finalMessages, useCase.params());
                 return ProviderResult.ok(reply.text(), Result.builder()
                         .content(reply.text()).finishReason(reply.finishReason()).build());
             });
@@ -148,6 +153,24 @@ not:
 ```java
 List<Message> messages = useCase.messages(Map.of("question", "why is the sky blue?"));
 String prompt = summarizeUseCase.text(Map.of("items", List.of("alpha", "beta")));
+```
+
+For chat calls, PromptOn returns only the messages managed in the editor, usually the system and
+developer instructions. Conversation history and the current user message belong to your app, so
+compose the final provider request explicitly:
+
+```java
+Map<String, Object> variables = Map.of("locale", "ko-KR");
+List<Message> managedMessages = useCase.messages(variables);
+List<Message> finalMessages = new ArrayList<>(managedMessages);
+finalMessages.addAll(loadConversationHistory(conversationId));
+finalMessages.add(Message.of("user", userText));
+
+MyReply reply = myProvider.chat(useCase.model(), finalMessages, useCase.params());
+useCase.track(TrackMeta.builder()
+        .variables(variables)
+        .inputMessages(finalMessages)
+        .build(), () -> ProviderResult.ok(reply.text(), Result.ofContent(reply.text())));
 ```
 
 Prompts are Liquid, restricted to the subset PromptOn allows: `{{ var }}`, `for` (with `else`,

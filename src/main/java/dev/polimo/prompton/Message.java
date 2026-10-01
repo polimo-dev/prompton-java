@@ -71,7 +71,7 @@ public final class Message {
         Map<String, Object> map = new LinkedHashMap<>(extra);
         if (type != null) map.put("type", type);
         if (role != null) map.put("role", role);
-        if (hasContent || !"slot".equals(type)) map.put("content", contentValue());
+        if (hasContent) map.put("content", contentValue());
         if (name != null) map.put("name", name);
         if (toolCallId != null) map.put("tool_call_id", toolCallId);
         if (hasToolCalls || !toolCalls.isEmpty()) map.put("tool_calls", toolCalls);

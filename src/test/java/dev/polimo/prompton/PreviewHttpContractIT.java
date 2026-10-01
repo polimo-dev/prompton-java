@@ -48,10 +48,16 @@ class PreviewHttpContractIT {
                 .httpClient(http)
                 .build())) {
             Map<String, Object> variables = variables();
+            List<Message> appHistory = appHistory();
 
             UseCase local = client.useCase(key);
             assertEquals(key, local.key());
-            assertProviderPayload(expectedRender, local.messages(variables), local.params());
+            List<Message> managedMessages = local.messages(variables);
+            assertProviderPayload(expectedRender, managedMessages, local.params());
+            List<Message> finalMessages = new ArrayList<>(managedMessages);
+            finalMessages.addAll(appHistory);
+            finalMessages.add(Message.of("user", "Tell me about park walks."));
+            assertEquals(managedMessages.size() + appHistory.size() + 1, finalMessages.size());
 
             UseCase remote = client.useCaseRemote(key, null, variables);
             assertMessages(expectedRender, remote.messages());
@@ -115,6 +121,10 @@ class PreviewHttpContractIT {
     }
 
     private static Map<String, Object> variables() {
+        return Map.of("locale", "ko-KR", "topic", "park walks");
+    }
+
+    private static List<Message> appHistory() {
         Map<String, Object> assistant = new LinkedHashMap<>();
         assistant.put("role", "assistant");
         assistant.put("content", null);
@@ -122,15 +132,14 @@ class PreviewHttpContractIT {
                 "id", "call_prior_1",
                 "type", "function",
                 "function", Map.of("name", "search_diaries", "arguments", "{\"query\":\"park walks\",\"limit\":1}"))));
-        List<Map<String, Object>> history = List.of(
-                Map.of("role", "user", "content", "지난 산책 일기를 찾아줘"),
-                assistant,
-                Map.of(
+        return List.of(
+                Message.of("user", "지난 산책 일기를 찾아줘"),
+                Message.fromMap(assistant),
+                Message.fromMap(Map.of(
                         "role", "tool",
                         "name", "search_diaries",
                         "tool_call_id", "call_prior_1",
-                        "content", List.of(Map.of("type", "text", "text", "{\"entries\":[\"A prior park walk.\"]}"))));
-        return Map.of("locale", "ko-KR", "topic", "park walks", "history", history);
+                        "content", List.of(Map.of("type", "text", "text", "{\"entries\":[\"A prior park walk.\"]}")))));
     }
 
     private static final class RecordingHttpClient implements PromptOnHttpClient {

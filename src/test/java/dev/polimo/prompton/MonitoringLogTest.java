@@ -361,6 +361,32 @@ class MonitoringLogTest {
     }
 
     @Test
+    void trackRecordsTheFinalMessagesComposedByTheApp() throws Exception {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            prompton.putUseCaseDocument(Fixtures.production());
+            UseCase pin = prompton.useCase("greeting");
+            List<Message> managed = pin.messages(Map.of("name", "Ada"));
+            List<Message> finalMessages = new ArrayList<>(managed);
+            finalMessages.add(Message.of("assistant", "Earlier answer."));
+            finalMessages.add(Message.of("user", "Thanks, continue."));
+
+            pin.track(TrackMeta.builder()
+                            .inputMessages(finalMessages)
+                            .variables(Map.of("name", "Ada"))
+                            .build(),
+                    () -> ProviderResult.ok("Sure.", Result.ofContent("Sure.")));
+
+            Map<String, Object> input = Conformance.map(prompton.capturedLogs().get(0).get("input"));
+            List<Object> loggedMessages = Json.listAt(input, "messages");
+            assertEquals(4, loggedMessages.size());
+            assertEquals(Map.of("role", "assistant", "content", "Earlier answer."),
+                    Conformance.map(loggedMessages.get(2)));
+            assertEquals(Map.of("role", "user", "content", "Thanks, continue."),
+                    Conformance.map(loggedMessages.get(3)));
+        }
+    }
+
+    @Test
     void trackLogsTheSelectedNamedPromptEvidence() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
             prompton.putUseCaseDocument(Fixtures.production());
