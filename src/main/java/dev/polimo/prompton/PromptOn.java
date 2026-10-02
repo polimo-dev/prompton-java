@@ -45,6 +45,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class PromptOn implements AutoCloseable {
 
+    private static final String REQ_CLOSED = "%Req.TransportError{reason: :closed}";
+    private static final String FAILED_REQ_CLOSED =
+            "failed to send request: %Req.TransportError{reason: :closed}";
+    private static final String FAILED_LLM_REQ_CLOSED =
+            "failed to call LLM: failed to send request: %Req.TransportError{reason: :closed}";
+
     private final PromptOnConfig config;
     private final SnapshotStore snapshots;
     private final ResolveClient resolveClient;
@@ -170,6 +176,9 @@ public final class PromptOn implements AutoCloseable {
     public void log(LogRecord record) {
         record.validate();
         Map<String, Object> map = record.toMap();
+        if (isClosedTransportStatusError(map)) {
+            return;
+        }
         map.putIfAbsent("id", UuidV7.generate());
         map.putIfAbsent("sdk", sdkIdentity());
 
@@ -204,7 +213,12 @@ public final class PromptOn implements AutoCloseable {
 
     /** Sends tool-attempt and completion trace events for a specific environment. */
     public EventLogResult logEvents(List<Map<String, Object>> events, String environment) {
-        List<Map<String, Object>> prepared = prepareEvents(events);
+        List<Map<String, Object>> prepared = prepareEvents(events).stream()
+                .filter(event -> !isClosedTransportCompletionEvent(event))
+                .toList();
+        if (prepared.isEmpty()) {
+            return EventLogResult.EMPTY;
+        }
         if (config.mode() == Mode.TEST) {
             capturedEvents.addAll(prepared);
             return new EventLogResult(prepared.size(), 0, List.of());
@@ -249,6 +263,31 @@ public final class PromptOn implements AutoCloseable {
             prepared.add(copy);
         }
         return prepared;
+    }
+
+    private static boolean isClosedTransportStatusError(Map<String, Object> record) {
+        if (!"error".equals(record.get("status"))) {
+            return false;
+        }
+        Object rawError = record.get("error");
+        if (!(rawError instanceof Map<?, ?> error)) {
+            return false;
+        }
+        if (!"transport".equals(error.get("kind"))) {
+            return false;
+        }
+        Object message = error.get("message");
+        return REQ_CLOSED.equals(message) || FAILED_REQ_CLOSED.equals(message);
+    }
+
+    private static boolean isClosedTransportCompletionEvent(Map<String, Object> event) {
+        if (!"completion".equals(event.get("event_kind")) || !"error".equals(event.get("status"))) {
+            return false;
+        }
+        Object output = event.get("completion_output");
+        return REQ_CLOSED.equals(output)
+                || FAILED_REQ_CLOSED.equals(output)
+                || FAILED_LLM_REQ_CLOSED.equals(output);
     }
 
     private static String requireEventField(Map<String, Object> event, String key) {

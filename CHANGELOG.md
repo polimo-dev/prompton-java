@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format follows
   the current user message in app code before calling the provider.
 - Documentation and examples now show logging the final app-composed `inputMessages` while keeping
   ordinary variables such as `history` available as normal template variables.
+- Omit the exact closed Req transport retry noise from monitoring records and completion trace
+  events while preserving all other transport, timeout and application errors.
 
 
 ## 0.5.0

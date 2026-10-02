@@ -215,6 +215,11 @@ ProviderResult.error(value, error, result);   // status error, keeping the usage
 The third form is what you want when the provider answered but the answer failed to parse: the
 tokens were still spent, and the text is the evidence.
 
+Provider-side `%Req.TransportError{reason: :closed}` monitoring records with
+`error.kind: "transport"` are retry noise from the upstream SDK. PromptOn omits that exact closed
+transport error before payload redaction, buffering, test capture or submission. Other transport,
+timeout and application errors are still logged.
+
 `log` is for the cases the wrapper does not fit — a streaming response you finish accounting for
 later, or a record your own framework assembles:
 
@@ -408,4 +413,4 @@ logo; forks and derived services must use a different name.
 
 Schema 7 prompt versions may include a `tools` block with OpenAI-compatible function tool definitions plus optional `tool_choice` and `parallel_tool_calls`. The SDK merges those into the provider params it returns and strips authoring-only `output_schema` / `output_examples` before the provider request body is built. The SDK never calls tools itself.
 
-Use `logEvents` to submit observed tool attempts and completion events to the same monitoring endpoint when your application has executed or rejected tool calls. Events require `trace_id`, `event_kind`, and `status`; the SDK fills `event_id`, `observed_at`, SDK identity, and `metadata.sdk.version` when they are absent.
+Use `logEvents` to submit observed tool attempts and completion events to the same monitoring endpoint when your application has executed or rejected tool calls. Events require `trace_id`, `event_kind`, and `status`; the SDK fills `event_id`, `observed_at`, SDK identity, and `metadata.sdk.version` when they are absent. Completion events whose `completion_output` is exactly the closed Req transport error are omitted after validation.

@@ -69,6 +69,26 @@ class MonitoringLogTest {
                 .build();
     }
 
+    private static LogRecord closedTransportRecord() {
+        return LogRecord.builder()
+                .key("greeting")
+                .model("openai/gpt-4o-mini")
+                .status(LogRecord.Status.ERROR)
+                .startedAt(Instant.now())
+                .error(LogError.of(ErrorKind.TRANSPORT,
+                        "failed to send request: %Req.TransportError{reason: :closed}"))
+                .build();
+    }
+
+    private static Map<String, Object> completionEvent(String output) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("trace_id", "trace-1");
+        event.put("event_kind", "completion");
+        event.put("status", "error");
+        event.put("completion_output", output);
+        return event;
+    }
+
     @Test
     void aBatchCarriesTheEnvelopeTheEnvironmentAndUuidV7Ids() {
         try (PromptOn prompton = PromptOn.create(config().build())) {
@@ -318,6 +338,59 @@ class MonitoringLogTest {
     }
 
     @Test
+    void closedReqTransportErrorsAreOmittedBeforeCaptureOrSend() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST)
+                .redact(record -> {
+                    throw new AssertionError("closed transport records are filtered before redaction");
+                })
+                .build())) {
+            prompton.log(closedTransportRecord());
+
+            assertTrue(prompton.capturedLogs().isEmpty());
+        }
+
+        try (PromptOn prompton = PromptOn.create(config().build())) {
+            prompton.log(closedTransportRecord());
+            FlushResult result = prompton.flush(Duration.ofSeconds(1));
+
+            assertEquals(0, result.records());
+            assertEquals(0, server.requests("/logs").size());
+        }
+    }
+
+    @Test
+    void closedReqTransportFilterRequiresExactKindStatusAndMessage() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            prompton.log(LogRecord.builder()
+                    .key("greeting")
+                    .model("openai/gpt-4o-mini")
+                    .status(LogRecord.Status.ERROR)
+                    .startedAt(Instant.now())
+                    .error(LogError.of(ErrorKind.TIMEOUT,
+                            "failed to send request: %Req.TransportError{reason: :closed}"))
+                    .build());
+            prompton.log(LogRecord.builder()
+                    .key("greeting")
+                    .model("openai/gpt-4o-mini")
+                    .status(LogRecord.Status.ERROR)
+                    .startedAt(Instant.now())
+                    .error(LogError.of(ErrorKind.TRANSPORT,
+                            "failed to send request: %Req.TransportError{reason: :timeout}"))
+                    .build());
+            prompton.log(LogRecord.builder()
+                    .key("greeting")
+                    .model("openai/gpt-4o-mini")
+                    .status(LogRecord.Status.OK)
+                    .startedAt(Instant.now())
+                    .error(LogError.of(ErrorKind.TRANSPORT,
+                            "failed to send request: %Req.TransportError{reason: :closed}"))
+                    .build());
+
+            assertEquals(3, prompton.capturedLogs().size());
+        }
+    }
+
+    @Test
     void trackTimesTheCallAndLogsIt() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
             prompton.putUseCaseDocument(Fixtures.production());
@@ -468,6 +541,26 @@ class MonitoringLogTest {
     }
 
     @Test
+    void closedReqTransportMessageInsideTheCallIsStillAppLoggedAndRethrown() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            prompton.putUseCaseDocument(Fixtures.production());
+            UseCase pin = prompton.useCase("greeting");
+            IllegalStateException boom = new IllegalStateException(
+                    "failed to send request: %Req.TransportError{reason: :closed}");
+
+            IllegalStateException thrown = assertThrows(IllegalStateException.class, () ->
+                    pin.trackUnchecked(TrackMeta.empty(), () -> {
+                        throw boom;
+                    }));
+
+            assertEquals(boom, thrown, "the original exception propagates unchanged");
+            Map<String, Object> error = Conformance.map(prompton.capturedLogs().get(0).get("error"));
+            assertEquals("app", error.get("kind"));
+            assertTrue(String.valueOf(error.get("message")).contains("%Req.TransportError{reason: :closed}"));
+        }
+    }
+
+    @Test
     void samplingDropsThePayloadButKeepsTheRecord() {
         try (PromptOn prompton = PromptOn.create(config()
                 .mode(Mode.TEST)
@@ -536,6 +629,47 @@ class MonitoringLogTest {
                             "status", "ok",
                             "arguments", List.of("not", "object")))));
             assertTrue(badArguments.getMessage().contains("arguments"));
+        }
+    }
+
+    @Test
+    void logEventsOmitClosedReqTransportCompletionErrorsAfterValidation() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            EventLogResult allFiltered = prompton.logEvents(List.of(
+                    completionEvent("%Req.TransportError{reason: :closed}"),
+                    completionEvent("failed to send request: %Req.TransportError{reason: :closed}"),
+                    completionEvent("failed to call LLM: failed to send request: "
+                            + "%Req.TransportError{reason: :closed}")));
+
+            assertEquals(EventLogResult.EMPTY, allFiltered);
+            assertTrue(prompton.capturedEvents().isEmpty());
+        }
+
+        try (PromptOn prompton = PromptOn.create(config().build())) {
+            EventLogResult allFiltered = prompton.logEvents(List.of(
+                    completionEvent("failed to send request: %Req.TransportError{reason: :closed}")));
+
+            assertEquals(EventLogResult.EMPTY, allFiltered);
+            assertEquals(0, server.requests("/logs").size());
+        }
+    }
+
+    @Test
+    void logEventsKeepOtherCompletionErrorsAndMixedOrder() {
+        try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
+            Map<String, Object> first = completionEvent("provider returned 500");
+            Map<String, Object> filtered = completionEvent(
+                    "failed to send request: %Req.TransportError{reason: :closed}");
+            Map<String, Object> last = completionEvent(
+                    "failed to send request: %Req.TransportError{reason: :timeout}");
+
+            EventLogResult result = prompton.logEvents(List.of(first, filtered, last));
+
+            assertEquals(2, result.accepted());
+            List<Map<String, Object>> captured = prompton.capturedEvents();
+            assertEquals("provider returned 500", captured.get(0).get("completion_output"));
+            assertEquals("failed to send request: %Req.TransportError{reason: :timeout}",
+                    captured.get(1).get("completion_output"));
         }
     }
 
