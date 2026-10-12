@@ -102,7 +102,7 @@ public final class PromptOnConfig {
         return new Builder();
     }
 
-    /** The runtime API key, or {@code null} when the SDK must work offline. */
+    /** The SDK key, or {@code null} when the SDK must work offline. */
     public String apiKey() {
         return apiKey;
     }
@@ -262,7 +262,7 @@ public final class PromptOnConfig {
 
         private Builder() {}
 
-        /** @param value the runtime API key ({@code ptn_<project>_…}) */
+        /** @param value the SDK key ({@code ptn_<project>_…}) */
         public Builder apiKey(String value) {
             this.apiKey = blankToNull(value);
             return this;

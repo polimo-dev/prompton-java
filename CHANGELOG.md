@@ -42,7 +42,7 @@ Patch release aligning native tool prompts and monitoring events with the verifi
 
 ## 0.4.1
 
-Patch release correcting the SDK wire contract to the current PromptOn runtime API.
+Patch release correcting the SDK wire contract to the current PromptOn API.
 
 ### Fixed
 
