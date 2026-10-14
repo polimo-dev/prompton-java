@@ -268,6 +268,103 @@ class ResolverTest {
     }
 
     @Test
+    void schemaEightRejectsPromptVersionKeysThatDoNotMatchEmbeddedPromptAndNumber() {
+        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                          "model": "m", "prompt_version": 2,
+                                          "params": {}, "provider_options": {}}},
+             "prompt_versions": {"greeting@2": {"prompt": "other", "number": 2,
+                                                   "kind": "chat", "engine": "liquid",
+                                                   "messages": [{"role": "user", "content": "Hi"}]}},
+             "models": {"openrouter:m": {"provider": "openrouter", "model": "m",
+                                           "metadata": {}, "provider_options": {},
+                                           "capabilities": [], "status": "active"}}}
+            """));
+    }
+
+    @Test
+    void schemaEightRejectsModelKeysThatDoNotMatchEmbeddedProviderAndModel() {
+        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                          "model": "m", "prompt_version": 2,
+                                          "params": {}, "provider_options": {}}},
+             "prompt_versions": {"greeting@2": {"prompt": "greeting", "number": 2,
+                                                   "kind": "chat", "engine": "liquid",
+                                                   "messages": [{"role": "user", "content": "Hi"}]}},
+             "models": {"openrouter:m": {"provider": "other", "model": "m",
+                                           "metadata": {}, "provider_options": {},
+                                           "capabilities": [], "status": "active"}}}
+            """));
+    }
+
+    @Test
+    void schemaEightPreservesModelNamesContainingColons() {
+        UseCaseDocument snapshot = UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                          "model": "vendor:model:with:colon", "prompt_version": 2,
+                                          "params": {}, "provider_options": {}}},
+             "prompt_versions": {"greeting@2": {"prompt": "greeting", "number": 2,
+                                                   "kind": "chat", "engine": "liquid",
+                                                   "messages": [{"role": "user", "content": "Hi"}]}},
+             "models": {"openrouter:vendor:model:with:colon": {"provider": "openrouter",
+                                                                  "model": "vendor:model:with:colon",
+                                                                  "metadata": {}, "provider_options": {},
+                                                                  "capabilities": [], "status": "active"}}}
+            """);
+
+        assertEquals("vendor:model:with:colon", Resolver.resolve(snapshot, "greeting").model());
+    }
+
+    @Test
+    void schemaEightRejectsInvalidDeploymentPromptVersionValues() {
+        List<String> invalidFragments = List.of(
+                "",
+                ", \"prompt_version\": true",
+                ", \"prompt_version\": 2.5",
+                ", \"prompt_version\": \"2\"",
+                ", \"prompt_version\": 0",
+                ", \"prompt_version\": -1");
+        for (String fragment : invalidFragments) {
+            assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+                {"schema_version": 8, "project": "p", "environment": "production",
+                 "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+                 "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                              "model": "m"%s,
+                                              "params": {}, "provider_options": {}}},
+                 "prompt_versions": {"greeting@2": {"prompt": "greeting", "number": 2,
+                                                       "kind": "chat", "engine": "liquid",
+                                                       "messages": [{"role": "user", "content": "Hi"}]}},
+                 "models": {"openrouter:m": {"provider": "openrouter", "model": "m",
+                                               "metadata": {}, "provider_options": {},
+                                               "capabilities": [], "status": "active"}}}
+                """.formatted(fragment)));
+        }
+    }
+
+    @Test
+    void schemaEightDoesNotAcceptLegacyDeploymentAliases() {
+        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "model_id": "openrouter:m",
+                                          "template_pins": {"default": "greeting@2"},
+                                          "params": {}, "provider_options": {}}},
+             "prompt_versions": {"greeting@2": {"prompt": "greeting", "number": 2,
+                                                   "kind": "chat", "engine": "liquid",
+                                                   "messages": [{"role": "user", "content": "Hi"}]}},
+             "models": {"openrouter:m": {"provider": "openrouter", "model": "m",
+                                           "metadata": {}, "provider_options": {},
+                                           "capabilities": [], "status": "active"}}}
+            """));
+    }
+
+    @Test
     void schemaNineIsStillUnsupportedUntilTheContractChangesAgain() {
         PromptOnException error = assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
             {"schema_version": 9, "project": "p", "environment": "production", "prompts": {}}

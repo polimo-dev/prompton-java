@@ -115,12 +115,11 @@ public final class QuickStart {
 
     private static final String BUILT_IN_SNAPSHOT = """
         {
-          "schema_version": 4,
+          "schema_version": 8,
           "project": "example",
           "environment": "production",
           "prompts": {
             "greeting": {
-              "id": "0198f2a1-0000-7000-8000-00000000c001",
               "kind": "chat",
               "input_schema": [{"name": "name", "type": "string", "required": true}],
               "default_params": {"max_tokens": 256},
@@ -129,18 +128,21 @@ public final class QuickStart {
           },
           "deployments": {
             "greeting": {
-              "id": "0198f2a1-0000-7000-8000-00000000d001",
-              "revision": "v2026.09.30-1",
-              "model_id": "0198f2a1-0000-7000-8000-00000000e001",
+              "revision": "v2026.10.14-1",
+              "provider": "openrouter",
+              "model": "openai/gpt-4o-mini",
+              "prompt_version": 1,
               "params": {"temperature": 0.2},
-              "provider_options": {},
-              "template_pins": {"default": "0198f2a1-0000-7000-8000-00000000a001"}
+              "provider_options": {"only": ["OpenAI"]},
+              "api": "chat_completions",
+              "request_path": "/api/v1/chat/completions"
             }
           },
           "prompt_versions": {
-            "0198f2a1-0000-7000-8000-00000000a001": {
-              "id": "0198f2a1-0000-7000-8000-00000000a001",
+            "greeting@1": {
+              "prompt": "greeting",
               "number": 1,
+              "kind": "chat",
               "engine": "liquid",
               "messages": [
                 {"role": "system", "content": "You are a friendly greeter. Answer in one short line."},
@@ -150,10 +152,9 @@ public final class QuickStart {
             }
           },
           "models": {
-            "0198f2a1-0000-7000-8000-00000000e001": {
-              "id": "0198f2a1-0000-7000-8000-00000000e001",
+            "openrouter:openai/gpt-4o-mini": {
               "provider": "openrouter",
-              "model_id": "openai/gpt-4o-mini",
+              "model": "openai/gpt-4o-mini",
               "display_name": "GPT-4o mini",
               "metadata": {},
               "provider_options": {"only": ["OpenAI"]},

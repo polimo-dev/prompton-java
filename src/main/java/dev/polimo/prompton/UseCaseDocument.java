@@ -1,6 +1,7 @@
 package dev.polimo.prompton;
 
 import dev.polimo.prompton.internal.Json;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -192,7 +193,7 @@ public final class UseCaseDocument {
         if (rawModels != null) {
             rawModels.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
-                    Model parsed = readModel(id, (Map<String, Object>) raw);
+                    Model parsed = readModel(id, (Map<String, Object>) raw, version);
                     models.put(parsed.id(), parsed);
                 } else {
                     warnings.add("invalid_model: " + id);
@@ -266,12 +267,8 @@ public final class UseCaseDocument {
             String key, Map<String, Object> raw, int schemaVersion, List<String> warnings) {
         Map<String, String> pins = new TreeMap<>();
         if (schemaVersion >= 8) {
-            Integer version = Json.intAt(raw, "prompt_version", null);
-            if (version != null && version > 0) {
-                pins.put("default", key + "@" + version);
-            } else if (version != null) {
-                warnings.add("invalid_prompt_pin: " + key + "/default");
-            }
+            int version = strictPositiveInt(raw.get("prompt_version"), "deployment prompt_version");
+            pins.put("default", key + "@" + version);
         } else {
             Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
             if (rawPins != null) {
@@ -292,7 +289,9 @@ public final class UseCaseDocument {
                 useCaseKey == null ? key : useCaseKey,
                 readRevision(raw, "revision"),
                 schemaVersion >= 8
-                        ? readableModelKey(Json.stringAt(raw, "provider"), Json.stringAt(raw, "model"))
+                        ? readableModelKey(
+                                requiredString(raw, "provider", "deployment provider"),
+                                requiredString(raw, "model", "deployment model"))
                         : Json.stringAt(raw, "model_id"),
                 schemaVersion >= 6 ? Json.stringAt(raw, "api") : null,
                 schemaVersion >= 6 ? Json.stringAt(raw, "request_path") : null,
@@ -325,11 +324,25 @@ public final class UseCaseDocument {
             }
             messages = List.copyOf(messages);
         }
+        String promptId;
+        Integer number;
+        if (schemaVersion >= 8) {
+            promptId = requiredString(raw, "prompt", "prompt version prompt");
+            number = strictPositiveInt(raw.get("number"), "prompt version number");
+            String expectedId = promptId + "@" + number;
+            if (!expectedId.equals(id)) {
+                throw new PromptOnException(
+                        "prompt version key " + id + " must match embedded prompt and number " + expectedId);
+            }
+        } else {
+            promptId = Json.stringAt(raw, "prompt_id");
+            number = Json.intAt(raw, "number", null);
+        }
         String versionId = Json.stringAt(raw, "id");
         return new PromptVersion(
                 schemaVersion >= 8 || versionId == null ? id : versionId,
-                schemaVersion >= 8 ? Json.stringAt(raw, "prompt") : Json.stringAt(raw, "prompt_id"),
-                Json.intAt(raw, "number", null),
+                promptId,
+                number,
                 schemaVersion >= 6 && Json.stringAt(raw, "kind") != null
                         ? UseCaseKind.fromRequired(Json.stringAt(raw, "kind"))
                         : null,
@@ -340,7 +353,7 @@ public final class UseCaseDocument {
                 Json.stringAt(raw, "text_template"));
     }
 
-    private static Model readModel(String id, Map<String, Object> raw) {
+    private static Model readModel(String id, Map<String, Object> raw, int schemaVersion) {
         List<String> capabilities = new ArrayList<>();
         List<Object> rawCapabilities = Json.listAt(raw, "capabilities");
         if (rawCapabilities != null) {
@@ -352,17 +365,56 @@ public final class UseCaseDocument {
         }
         Map<String, Object> metadata = Json.mapAt(raw, "metadata");
         Map<String, Object> providerOptions = Json.mapAt(raw, "provider_options");
-        String modelUuid = Json.stringAt(raw, "id");
-        String providerModel = Json.stringAt(raw, "model");
+        String provider;
+        String providerModel;
+        String modelId;
+        if (schemaVersion >= 8) {
+            provider = requiredString(raw, "provider", "model provider");
+            providerModel = requiredString(raw, "model", "model name");
+            String expectedId = provider + ":" + providerModel;
+            if (!expectedId.equals(id)) {
+                throw new PromptOnException(
+                        "model key " + id + " must match embedded provider and model " + expectedId);
+            }
+            modelId = id;
+        } else {
+            String modelUuid = Json.stringAt(raw, "id");
+            provider = Json.stringAt(raw, "provider");
+            providerModel = Json.stringAt(raw, "model");
+            providerModel = providerModel == null ? Json.stringAt(raw, "model_id") : providerModel;
+            modelId = modelUuid == null ? id : modelUuid;
+        }
         return new Model(
-                modelUuid == null ? id : modelUuid,
-                Json.stringAt(raw, "provider"),
-                providerModel == null ? Json.stringAt(raw, "model_id") : providerModel,
+                modelId,
+                provider,
+                providerModel,
                 Json.stringAt(raw, "display_name"),
                 frozen(metadata),
                 frozen(providerOptions),
                 List.copyOf(capabilities),
                 Json.stringAt(raw, "status"));
+    }
+
+    private static String requiredString(Map<String, Object> raw, String key, String label) {
+        String value = Json.stringAt(raw, key);
+        if (value == null) {
+            throw new PromptOnException(label + " is required");
+        }
+        return value;
+    }
+
+    private static int strictPositiveInt(Object value, String label) {
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            long number = ((Number) value).longValue();
+            if (number > 0 && number <= Integer.MAX_VALUE) {
+                return (int) number;
+            }
+        } else if (value instanceof BigInteger number) {
+            if (number.signum() > 0 && number.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) <= 0) {
+                return number.intValue();
+            }
+        }
+        throw new PromptOnException(label + " must be a positive JSON integer");
     }
 
     private static String readableModelKey(String provider, String model) {

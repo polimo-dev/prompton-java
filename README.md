@@ -134,9 +134,8 @@ key and waits up to one second; if that fails or times out, it returns the last 
 expired. With no cached value at all, it raises a normal `UseCaseException`.
 
 ```java
-UseCase useCase = prompton.useCase("support_reply");      // the "default" prompt
-UseCase korean = prompton.useCase("support_reply", "ko"); // a named prompt
-List<String> names = prompton.promptNames("support_reply");  // ["default", "ko"]
+UseCase useCase = prompton.useCase("support_reply");         // the implicit default prompt
+List<String> names = prompton.promptNames("support_reply");  // ["default"]
 ```
 
 A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (legacy
