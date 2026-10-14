@@ -12,7 +12,7 @@ import java.util.TreeMap;
 /**
  * A parsed PromptOn prompt document — either a bundle or one demand-fetched prompt key.
  *
- * <p>The SDK reads schema versions 4 through 8. The {@code schema_version} field must be a JSON
+ * <p>The SDK reads schema versions 4 through 9. The {@code schema_version} field must be a JSON
  * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}
  * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
  * version per prompt name.
@@ -20,7 +20,7 @@ import java.util.TreeMap;
 public final class UseCaseDocument {
 
     /** The schema version this SDK reads. */
-    public static final int SCHEMA_VERSION = 8;
+    public static final int SCHEMA_VERSION = 9;
 
     /**
      * One prompt: what shape of call it is and what its logs may carry.
@@ -147,8 +147,9 @@ public final class UseCaseDocument {
     public static UseCaseDocument fromMap(Map<String, Object> doc) {
         List<String> warnings = new ArrayList<>();
         int version = readSchemaVersion(doc);
+        Map<String, Object> normalized = version == 9 ? normalizeSingleDocument(doc) : doc;
 
-        Map<String, Object> rawUseCases = Json.mapAt(doc, "prompts");
+        Map<String, Object> rawUseCases = Json.mapAt(normalized, "prompts");
         if (rawUseCases == null) {
             throw new PromptOnException("prompt document is missing prompts");
         }
@@ -163,7 +164,7 @@ public final class UseCaseDocument {
         });
 
         Map<String, Deployment> deployments = new LinkedHashMap<>();
-        Map<String, Object> rawDeployments = Json.mapAt(doc, "deployments");
+        Map<String, Object> rawDeployments = Json.mapAt(normalized, "deployments");
         if (rawDeployments != null) {
             rawDeployments.forEach((key, value) -> {
                 if (value instanceof Map<?, ?> raw) {
@@ -176,7 +177,7 @@ public final class UseCaseDocument {
         }
 
         Map<String, PromptVersion> promptVersions = new LinkedHashMap<>();
-        Map<String, Object> rawVersions = Json.mapAt(doc, "prompt_versions");
+        Map<String, Object> rawVersions = Json.mapAt(normalized, "prompt_versions");
         if (rawVersions != null) {
             rawVersions.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
@@ -189,7 +190,7 @@ public final class UseCaseDocument {
         }
 
         Map<String, Model> models = new LinkedHashMap<>();
-        Map<String, Object> rawModels = Json.mapAt(doc, "models");
+        Map<String, Object> rawModels = Json.mapAt(normalized, "models");
         if (rawModels != null) {
             rawModels.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
@@ -203,13 +204,68 @@ public final class UseCaseDocument {
 
         return new UseCaseDocument(
                 version,
-                Json.stringAt(doc, "project"),
-                Json.stringAt(doc, "environment"),
+                Json.stringAt(normalized, "project"),
+                Json.stringAt(normalized, "environment"),
                 useCases,
                 deployments,
                 promptVersions,
                 models,
                 warnings);
+    }
+
+    private static Map<String, Object> normalizeSingleDocument(Map<String, Object> doc) {
+        if (doc.containsKey("prompts")
+                || doc.containsKey("deployments")
+                || doc.containsKey("prompt_versions")
+                || doc.containsKey("models")) {
+            throw new PromptOnException("schema 9 single prompt document must use singular resources");
+        }
+
+        Map<String, Object> prompt = requiredMap(doc, "prompt", "prompt");
+        Map<String, Object> deployment = requiredMap(doc, "deployment", "deployment");
+        Map<String, Object> version = requiredMap(doc, "prompt_version", "prompt version");
+        Map<String, Object> model = requiredMap(doc, "model", "model");
+
+        String key = requiredString(prompt, "key", "prompt key");
+        String versionPrompt = requiredString(version, "prompt", "prompt version prompt");
+        if (!key.equals(versionPrompt)) {
+            throw new PromptOnException(
+                    "prompt version prompt " + versionPrompt + " must match prompt key " + key);
+        }
+        int versionNumber = strictPositiveInt(version.get("number"), "prompt version number");
+        int deploymentVersion = strictPositiveInt(
+                deployment.get("prompt_version"), "deployment prompt_version");
+        if (deploymentVersion != versionNumber) {
+            throw new PromptOnException(
+                    "deployment prompt_version must match prompt version number " + versionNumber);
+        }
+
+        String deploymentProvider = requiredString(deployment, "provider", "deployment provider");
+        String deploymentModel = requiredString(deployment, "model", "deployment model");
+        String modelProvider = requiredString(model, "provider", "model provider");
+        String modelName = requiredString(model, "model", "model name");
+        if (!deploymentProvider.equals(modelProvider) || !deploymentModel.equals(modelName)) {
+            throw new PromptOnException("deployment provider/model must match model provider/model");
+        }
+
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        normalized.put("schema_version", doc.get("schema_version"));
+        normalized.put("project", doc.get("project"));
+        normalized.put("environment", doc.get("environment"));
+        normalized.put("prompts", Map.of(key, prompt));
+        normalized.put("deployments", Map.of(key, deployment));
+        normalized.put("prompt_versions", Map.of(key + "@" + versionNumber, version));
+        normalized.put("models", Map.of(readableModelKey(modelProvider, modelName), model));
+        return normalized;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> requiredMap(Map<String, Object> doc, String key, String label) {
+        Object value = doc.get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new PromptOnException("schema 9 single prompt document " + label + " is required");
+        }
+        return (Map<String, Object>) map;
     }
 
     private static int readSchemaVersion(Map<String, Object> doc) {

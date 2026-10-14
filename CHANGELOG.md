@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.1
+
+### Changed
+
+- Read schema v9 single-prompt documents from `GET /prompts/{key}` with singular `prompt`,
+  `deployment`, `prompt_version` and `model` resources.
+- Keep schema v8 bulk documents unchanged while normalizing schema v9 only at the decode boundary.
+- Preserve the original schema v9 response bytes for ETag revalidation, disk cache entries and
+  `exportUseCaseDocument`.
+
 ## 0.7.0
 
 ### Changed
