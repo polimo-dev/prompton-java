@@ -188,6 +188,7 @@ public final class PromptOn implements AutoCloseable {
         }
         Map<String, Object> prepared = Payload.apply(
                 map, policy, new Payload.Options(config.hashEndUser(), config.redact()));
+        stripRetiredResourceRefs(prepared);
 
         String environment = record.environment() == null ? config.environment() : record.environment();
         if (config.mode() == Mode.TEST) {
@@ -195,6 +196,12 @@ public final class PromptOn implements AutoCloseable {
             return;
         }
         buffer.enqueue(prepared, environment);
+    }
+
+    private static void stripRetiredResourceRefs(Map<String, Object> record) {
+        record.remove("deployment_id");
+        record.remove("prompt_version_id");
+        record.remove("model_id");
     }
 
     /**

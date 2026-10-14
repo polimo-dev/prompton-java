@@ -11,9 +11,9 @@ import java.util.Map;
  *
  * <p>{@code prompt_key}, {@code model}, {@code status} and {@code started_at} are required;
  * {@link PromptOn#log(LogRecord)} fills in {@code id} (a UUIDv7, the idempotency key),
- * {@code sdk} and — when a {@link UseCase} is attached — {@code deployment_id},
- * {@code deployment_revision}, {@code prompt}, {@code prompt_version_id}, {@code model_id},
- * {@code provider}, {@code kind}, {@code params} and {@code source}.
+ * {@code sdk} and — when a {@link UseCase} is attached — {@code deployment_revision},
+ * {@code prompt}, {@code prompt_version_number}, {@code provider}, {@code kind}, {@code params}
+ * and {@code source}.
  *
  * <p>Keep secrets out of {@code input}, {@code output}, {@code context} and {@code metadata}: no
  * provider keys, no {@code PTN_API_KEY}, no user PII beyond {@code end_user_ref}.
@@ -141,12 +141,6 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the catalog model UUID */
-        public Builder modelId(String value) {
-            fields.put("model_id", value);
-            return this;
-        }
-
         /** @param value the provider that was called */
         public Builder provider(String value) {
             fields.put("provider", value);
@@ -249,12 +243,6 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the deployment revision's id */
-        public Builder deploymentId(String value) {
-            fields.put("deployment_id", value);
-            return this;
-        }
-
         /** @param value the deployment revision label */
         public Builder deploymentRevision(String value) {
             fields.put("deployment_revision", value);
@@ -267,9 +255,9 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the pinned prompt version's id */
-        public Builder promptVersionId(String value) {
-            fields.put("prompt_version_id", value);
+        /** @param value the pinned prompt version number */
+        public Builder promptVersionNumber(Integer value) {
+            fields.put("prompt_version_number", value);
             return this;
         }
 
@@ -313,12 +301,10 @@ public final class LogRecord {
             }
             key(useCase.key());
             kind(useCase.kind());
-            deploymentId(useCase.deploymentId());
             deploymentRevision(useCase.deploymentRevision());
             prompt(useCase.prompt());
-            promptVersionId(useCase.promptVersionId());
+            promptVersionNumber(useCase.promptVersionNumber());
             model(useCase.model());
-            modelId(useCase.modelId());
             provider(useCase.provider());
             source(useCase.source());
             if (!fields.containsKey("params")) {

@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.5.0")
+    implementation("dev.polimo:prompton-sdk:0.6.0")
 }
 ```
 
@@ -49,7 +49,7 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -241,7 +241,7 @@ prompton.log(LogRecord.builder()
 | `id` | UUIDv7, the idempotency key. The SDK issues one; a resend is counted as a duplicate, never stored twice |
 | `prompt_key`, `model`, `status`, `started_at` | Required. `status` is `ok` or `error`; `started_at` must be within 5 minutes ahead and 7 days behind |
 | `kind` | `chat`, `text` or `embedding` |
-| `deployment_id`, `deployment_revision`, `template`, `prompt_version_id`, `model_id` | The prompt evidence, filled from the `UseCase` |
+| `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `UseCase`. Snapshot and response objects still expose internal ids such as `deploymentId()`, `promptVersionId()` and `modelId()` |
 | `source` | `remote`, `disk`, `bundle` or `manual` — which tier answered |
 | `provider`, `model_used`, `upstream_provider` | Who actually served the call |
 | `params` | What was sent. The server blanks it over 4 KB rather than rejecting the record |
@@ -252,7 +252,7 @@ prompton.log(LogRecord.builder()
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.5.0"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.6.0"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 

@@ -90,16 +90,17 @@ class LogRecordConformanceTest {
                         "field " + key);
             }
         });
-        assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), actual.get("sdk"));
+        assertEquals(Map.of("name", "prompton-java", "version", PromptOnConfig.SDK_VERSION),
+                actual.get("sdk"));
         assertTrue(UuidV7.isUuidV7(Json.stringAt(actual, "id")));
         assertNotNull(actual.get("latency_ms"));
 
-        // The one field this SDK adds on top of the reference record: the catalog model UUID, which
-        // the contract lists and which lets the server join a log to the model it used.
         Set<String> extra = new java.util.LinkedHashSet<>(actual.keySet());
         extra.removeAll(golden.keySet());
-        assertEquals(Set.of("model_id"), extra);
-        assertEquals("0198f2a1-0000-7000-8000-00000000e001", actual.get("model_id"));
+        assertEquals(Set.of(), extra);
+        assertFalse(actual.containsKey("deployment_id"));
+        assertFalse(actual.containsKey("prompt_version_id"));
+        assertFalse(actual.containsKey("model_id"));
     }
 
     private Map<String, Object> buildChatSuccess(Map<String, Object> golden) throws Exception {

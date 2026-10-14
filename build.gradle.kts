@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "dev.polimo"
-version = "0.5.0"
+version = "0.6.0"
 description = "PromptOn SDK for Java — load prompt prompts and models locally, render them, and batch monitoring logs."
 
 repositories {

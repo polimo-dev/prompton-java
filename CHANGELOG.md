@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.6.0
 
 ### Changed
 
@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format follows
   ordinary variables such as `history` available as normal template variables.
 - Omit the exact closed Req transport retry noise from monitoring records and completion trace
   events while preserving all other transport, timeout and application errors.
+- Monitoring logs now send readable resource references: `deployment_revision`, `provider`, `model`
+  and `prompt_version_number`. The `LogRecord` builder no longer has UUID resource fields for
+  `deployment_id`, `prompt_version_id` or `model_id`; prompt documents and response objects still
+  expose those internal ids for local resolution and debugging.
 
 
 ## 0.5.0

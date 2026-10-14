@@ -108,7 +108,7 @@ class MonitoringLogTest {
                 Map<String, Object> map = Conformance.map(entry);
                 assertTrue(UuidV7.isUuidV7(String.valueOf(map.get("id"))),
                         "the id must be a UUIDv7, not a v4: " + map.get("id"));
-                assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), map.get("sdk"));
+                assertEquals(Map.of("name", "prompton-java", "version", PromptOnConfig.SDK_VERSION), map.get("sdk"));
             }
         }
     }
@@ -422,6 +422,10 @@ class MonitoringLogTest {
             assertEquals("chat", logged.get("kind"));
             assertEquals("v2026.09.30-3", logged.get("deployment_revision"));
             assertEquals("default", logged.get("template"));
+            assertEquals(2, logged.get("prompt_version_number"));
+            assertFalse(logged.containsKey("deployment_id"));
+            assertFalse(logged.containsKey("prompt_version_id"));
+            assertFalse(logged.containsKey("model_id"));
             assertEquals("OpenAI", logged.get("upstream_provider"));
             assertEquals(Map.of("language", "en"), logged.get("context"));
             assertEquals(Map.of("job_id", 88, "is_byok", false), logged.get("metadata"));
@@ -492,7 +496,39 @@ class MonitoringLogTest {
             Map<String, Object> logged = prompton.capturedLogs().get(0);
             assertEquals("greeting", logged.get("prompt_key"));
             assertEquals("ko", logged.get("template"));
-            assertEquals(korean.promptVersionId(), logged.get("prompt_version_id"));
+            assertEquals(korean.promptVersionNumber(), logged.get("prompt_version_number"));
+            assertFalse(logged.containsKey("prompt_version_id"));
+        }
+    }
+
+    @Test
+    void retiredResourceRefsAreStrippedFromManualRecordsAfterRedaction() {
+        try (PromptOn prompton = PromptOn.create(config()
+                .mode(Mode.TEST)
+                .redact(record -> {
+                    record.put("deployment_id", "0198f2a1-0000-7000-8000-00000000d001");
+                    record.put("prompt_version_id", "0198f2a1-0000-7000-8000-00000000a001");
+                    record.put("model_id", "0198f2a1-0000-7000-8000-00000000e001");
+                    return record;
+                })
+                .build())) {
+            prompton.log(LogRecord.fromMap(new LinkedHashMap<>(Map.of(
+                    "prompt_key", "greeting",
+                    "model", "openai/gpt-4o-mini",
+                    "status", "ok",
+                    "started_at", Instant.now().toString(),
+                    "deployment_id", "0198f2a1-0000-7000-8000-00000000d001",
+                    "prompt_version_id", "0198f2a1-0000-7000-8000-00000000a001",
+                    "model_id", "0198f2a1-0000-7000-8000-00000000e001",
+                    "deployment_revision", "v2026.09.30-3",
+                    "prompt_version_number", 1))));
+
+            Map<String, Object> logged = prompton.capturedLogs().get(0);
+            assertEquals("v2026.09.30-3", logged.get("deployment_revision"));
+            assertEquals(1, logged.get("prompt_version_number"));
+            assertFalse(logged.containsKey("deployment_id"));
+            assertFalse(logged.containsKey("prompt_version_id"));
+            assertFalse(logged.containsKey("model_id"));
         }
     }
 
@@ -608,8 +644,8 @@ class MonitoringLogTest {
             Map<String, Object> sent = Conformance.map(Json.listAt(body, "events").get(0));
             assertTrue(UuidV7.isUuidV7(String.valueOf(sent.get("event_id"))));
             assertNotNull(sent.get("observed_at"));
-            assertEquals(Map.of("name", "prompton-java", "version", "0.5.0"), sent.get("sdk"));
-            assertEquals(Map.of("version", "0.5.0"), Conformance.map(sent.get("metadata")).get("sdk"));
+            assertEquals(Map.of("name", "prompton-java", "version", PromptOnConfig.SDK_VERSION), sent.get("sdk"));
+            assertEquals(Map.of("version", PromptOnConfig.SDK_VERSION), Conformance.map(sent.get("metadata")).get("sdk"));
             assertEquals(Map.of("query", "mood"), sent.get("arguments"));
             assertEquals(List.of(Map.of("title", "today")), sent.get("result"));
         }
