@@ -7,28 +7,27 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * A parsed PromptOn prompt document — either a bundle or one demand-fetched prompt key.
  *
- * <p>The SDK reads schema versions 4 through 9. The {@code schema_version} field must be a JSON
- * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}
+ * <p>The SDK reads schema version 1. The {@code schema_version} field must be a JSON
+ * integer 1; missing, non-integral, and unsupported version values are refused ({@link #parse}
  * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
  * version per prompt name.
  */
 public final class UseCaseDocument {
 
     /** The schema version this SDK reads. */
-    public static final int SCHEMA_VERSION = 9;
+    public static final int SCHEMA_VERSION = 1;
 
     /**
      * One prompt: what shape of call it is and what its logs may carry.
      *
-     * @param id the prompt's legacy UUID, or {@code null} for schema v8
+     * @param id reserved; always {@code null}
      * @param key the stable key one call site is known by
      * @param kind chat, decision, text or embedding
-     * @param inputSchema the variables the prompt declares
+     * @param variables the variables the prompt declares
      * @param defaultParams the params a deployment layers its own on top of
      * @param payloadPolicy how much of a call's text its monitoring logs may carry
      */
@@ -36,19 +35,19 @@ public final class UseCaseDocument {
             String id,
             String key,
             UseCaseKind kind,
-            List<Map<String, Object>> inputSchema,
+            List<Map<String, Object>> variables,
             Map<String, Object> defaultParams,
             PayloadPolicy payloadPolicy) {}
 
     /**
      * One live deployment revision: the pin.
      *
-     * @param id the revision's legacy UUID, or {@code null} for schema v8
+     * @param id reserved; always {@code null}
      * @param useCaseKey the prompt it pins
      * @param revision the UTC-date revision label, for example {@code v2026.09.30-1}
      * @param modelId the model lookup key it pins
-     * @param api provider API family, present in schema v6+
-     * @param requestPath origin-relative provider request path, present in schema v6+
+     * @param api provider API family
+     * @param requestPath origin-relative provider request path
      * @param params the params layered over the prompt's defaults
      * @param providerOptions the provider options layered over the model's
      * @param promptPins one pinned prompt version id per prompt name; empty for an embedding
@@ -70,7 +69,7 @@ public final class UseCaseDocument {
      * @param id the version lookup key
      * @param promptId the prompt this is a version of, when supplied by the document
      * @param number the version number, counting up from 1
-     * @param kind immutable version kind, present in schema v6+
+     * @param kind immutable version kind
      * @param engine liquid or raw
      * @param messages the chat template, or {@code null} for a text version
      * @param decision the Decision template, or {@code null} for another kind
@@ -147,12 +146,15 @@ public final class UseCaseDocument {
     public static UseCaseDocument fromMap(Map<String, Object> doc) {
         List<String> warnings = new ArrayList<>();
         int version = readSchemaVersion(doc);
-        Map<String, Object> normalized = version == 9 ? normalizeSingleDocument(doc) : doc;
+        Map<String, Object> normalized = hasSingleResource(doc) ? normalizeSingleDocument(doc) : doc;
 
         Map<String, Object> rawUseCases = Json.mapAt(normalized, "prompts");
         if (rawUseCases == null) {
-            throw new PromptOnException("prompt document is missing prompts");
+            throw new PromptOnException("prompt document requires keyed prompts; a discovery index is not configuration");
         }
+        requiredMap(normalized, "deployments", "deployments");
+        requiredMap(normalized, "prompt_versions", "prompt versions");
+        requiredMap(normalized, "models", "models");
 
         Map<String, UseCase> useCases = new LinkedHashMap<>();
         rawUseCases.forEach((key, value) -> {
@@ -169,7 +171,7 @@ public final class UseCaseDocument {
             rawDeployments.forEach((key, value) -> {
                 if (value instanceof Map<?, ?> raw) {
                     deployments.put(key, readDeployment(
-                            key, (Map<String, Object>) raw, version, warnings));
+                            key, (Map<String, Object>) raw));
                 } else {
                     warnings.add("invalid_deployment: " + key);
                 }
@@ -181,7 +183,7 @@ public final class UseCaseDocument {
         if (rawVersions != null) {
             rawVersions.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
-                    PromptVersion parsed = readPromptVersion(id, (Map<String, Object>) raw, version);
+                    PromptVersion parsed = readPromptVersion(id, (Map<String, Object>) raw);
                     promptVersions.put(parsed.id(), parsed);
                 } else {
                     warnings.add("invalid_prompt_version: " + id);
@@ -194,7 +196,7 @@ public final class UseCaseDocument {
         if (rawModels != null) {
             rawModels.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
-                    Model parsed = readModel(id, (Map<String, Object>) raw, version);
+                    Model parsed = readModel(id, (Map<String, Object>) raw);
                     models.put(parsed.id(), parsed);
                 } else {
                     warnings.add("invalid_model: " + id);
@@ -213,12 +215,17 @@ public final class UseCaseDocument {
                 warnings);
     }
 
+    private static boolean hasSingleResource(Map<String, Object> doc) {
+        return doc.containsKey("prompt") || doc.containsKey("deployment")
+                || doc.containsKey("prompt_version") || doc.containsKey("model");
+    }
+
     private static Map<String, Object> normalizeSingleDocument(Map<String, Object> doc) {
         if (doc.containsKey("prompts")
                 || doc.containsKey("deployments")
                 || doc.containsKey("prompt_versions")
                 || doc.containsKey("models")) {
-            throw new PromptOnException("schema 9 single prompt document must use singular resources");
+            throw new PromptOnException("single prompt document must use singular resources");
         }
 
         Map<String, Object> prompt = requiredMap(doc, "prompt", "prompt");
@@ -263,7 +270,7 @@ public final class UseCaseDocument {
     private static Map<String, Object> requiredMap(Map<String, Object> doc, String key, String label) {
         Object value = doc.get(key);
         if (!(value instanceof Map<?, ?> map)) {
-            throw new PromptOnException("schema 9 single prompt document " + label + " is required");
+            throw new PromptOnException("prompt document " + label + " is required");
         }
         return (Map<String, Object>) map;
     }
@@ -282,7 +289,7 @@ public final class UseCaseDocument {
                             + SCHEMA_VERSION);
         }
         long version = ((Number) raw).longValue();
-        if (version < 4 || version > SCHEMA_VERSION) {
+        if (version != SCHEMA_VERSION) {
             throw new PromptOnException(
                 "unsupported prompt document schema_version " + version
                             + "; this SDK reads version "
@@ -301,7 +308,7 @@ public final class UseCaseDocument {
     @SuppressWarnings("unchecked")
     private static UseCase readUseCase(String key, Map<String, Object> raw) {
         List<Map<String, Object>> schema = new ArrayList<>();
-        List<Object> rawSchema = Json.listAt(raw, "input_schema");
+        List<Object> rawSchema = Json.listAt(raw, "variables");
         if (rawSchema != null) {
             for (Object entry : rawSchema) {
                 if (entry instanceof Map<?, ?> map) {
@@ -311,7 +318,7 @@ public final class UseCaseDocument {
         }
         Map<String, Object> defaults = Json.mapAt(raw, "default_params");
         return new UseCase(
-                Json.stringAt(raw, "id"),
+                null,
                 key,
                 UseCaseKind.from(Json.stringAt(raw, "kind")),
                 List.copyOf(schema),
@@ -319,41 +326,20 @@ public final class UseCaseDocument {
                 PayloadPolicy.fromMap(Json.mapAt(raw, "payload_policy")));
     }
 
-    private static Deployment readDeployment(
-            String key, Map<String, Object> raw, int schemaVersion, List<String> warnings) {
-        Map<String, String> pins = new TreeMap<>();
-        if (schemaVersion >= 8) {
-            int version = strictPositiveInt(raw.get("prompt_version"), "deployment prompt_version");
-            pins.put("default", key + "@" + version);
-        } else {
-            Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
-            if (rawPins != null) {
-                rawPins.forEach((name, id) -> {
-                    if (id instanceof String versionId) {
-                        pins.put(name, versionId);
-                    } else {
-                        warnings.add("invalid_prompt_pin: " + key + "/" + name);
-                    }
-                });
-            }
-        }
-        Map<String, Object> params = Json.mapAt(raw, "params");
-        Map<String, Object> providerOptions = Json.mapAt(raw, "provider_options");
-        String useCaseKey = Json.stringAt(raw, "use_case_key");
+    private static Deployment readDeployment(String key, Map<String, Object> raw) {
+        int version = strictPositiveInt(raw.get("prompt_version"), "deployment prompt_version");
         return new Deployment(
-                schemaVersion >= 8 ? null : Json.stringAt(raw, "id"),
-                useCaseKey == null ? key : useCaseKey,
+                null,
+                key,
                 readRevision(raw, "revision"),
-                schemaVersion >= 8
-                        ? readableModelKey(
-                                requiredString(raw, "provider", "deployment provider"),
-                                requiredString(raw, "model", "deployment model"))
-                        : Json.stringAt(raw, "model_id"),
-                schemaVersion >= 6 ? Json.stringAt(raw, "api") : null,
-                schemaVersion >= 6 ? Json.stringAt(raw, "request_path") : null,
-                frozen(params),
-                frozen(providerOptions),
-                Collections.unmodifiableMap(pins));
+                readableModelKey(
+                        requiredString(raw, "provider", "deployment provider"),
+                        requiredString(raw, "model", "deployment model")),
+                Json.stringAt(raw, "api"),
+                Json.stringAt(raw, "request_path"),
+                frozen(Json.mapAt(raw, "params")),
+                frozen(Json.mapAt(raw, "provider_options")),
+                Map.of("default", key + "@" + version));
     }
 
     private static String readRevision(Map<String, Object> raw, String key) {
@@ -368,7 +354,7 @@ public final class UseCaseDocument {
     }
 
     @SuppressWarnings("unchecked")
-    private static PromptVersion readPromptVersion(String id, Map<String, Object> raw, int schemaVersion) {
+    private static PromptVersion readPromptVersion(String id, Map<String, Object> raw) {
         List<Message> messages = null;
         List<Object> rawMessages = Json.listAt(raw, "messages");
         if (rawMessages != null) {
@@ -380,36 +366,28 @@ public final class UseCaseDocument {
             }
             messages = List.copyOf(messages);
         }
-        String promptId;
-        Integer number;
-        if (schemaVersion >= 8) {
-            promptId = requiredString(raw, "prompt", "prompt version prompt");
-            number = strictPositiveInt(raw.get("number"), "prompt version number");
-            String expectedId = promptId + "@" + number;
-            if (!expectedId.equals(id)) {
-                throw new PromptOnException(
-                        "prompt version key " + id + " must match embedded prompt and number " + expectedId);
-            }
-        } else {
-            promptId = Json.stringAt(raw, "prompt_id");
-            number = Json.intAt(raw, "number", null);
+        String promptId = requiredString(raw, "prompt", "prompt version prompt");
+        int number = strictPositiveInt(raw.get("number"), "prompt version number");
+        String expectedId = promptId + "@" + number;
+        if (!expectedId.equals(id)) {
+            throw new PromptOnException(
+                    "prompt version key " + id + " must match embedded prompt and number " + expectedId);
         }
-        String versionId = Json.stringAt(raw, "id");
         return new PromptVersion(
-                schemaVersion >= 8 || versionId == null ? id : versionId,
+                id,
                 promptId,
                 number,
-                schemaVersion >= 6 && Json.stringAt(raw, "kind") != null
+                Json.stringAt(raw, "kind") != null
                         ? UseCaseKind.fromRequired(Json.stringAt(raw, "kind"))
                         : null,
                 Template.Engine.from(Json.stringAt(raw, "engine")),
                 messages,
-                schemaVersion >= 6 ? Decision.fromMap(Json.mapAt(raw, "decision")) : null,
+                Decision.fromMap(Json.mapAt(raw, "decision")),
                 frozen(Json.mapAt(raw, "tools")),
                 Json.stringAt(raw, "text_template"));
     }
 
-    private static Model readModel(String id, Map<String, Object> raw, int schemaVersion) {
+    private static Model readModel(String id, Map<String, Object> raw) {
         List<String> capabilities = new ArrayList<>();
         List<Object> rawCapabilities = Json.listAt(raw, "capabilities");
         if (rawCapabilities != null) {
@@ -421,27 +399,15 @@ public final class UseCaseDocument {
         }
         Map<String, Object> metadata = Json.mapAt(raw, "metadata");
         Map<String, Object> providerOptions = Json.mapAt(raw, "provider_options");
-        String provider;
-        String providerModel;
-        String modelId;
-        if (schemaVersion >= 8) {
-            provider = requiredString(raw, "provider", "model provider");
-            providerModel = requiredString(raw, "model", "model name");
-            String expectedId = provider + ":" + providerModel;
-            if (!expectedId.equals(id)) {
-                throw new PromptOnException(
-                        "model key " + id + " must match embedded provider and model " + expectedId);
-            }
-            modelId = id;
-        } else {
-            String modelUuid = Json.stringAt(raw, "id");
-            provider = Json.stringAt(raw, "provider");
-            providerModel = Json.stringAt(raw, "model");
-            providerModel = providerModel == null ? Json.stringAt(raw, "model_id") : providerModel;
-            modelId = modelUuid == null ? id : modelUuid;
+        String provider = requiredString(raw, "provider", "model provider");
+        String providerModel = requiredString(raw, "model", "model name");
+        String expectedId = provider + ":" + providerModel;
+        if (!expectedId.equals(id)) {
+            throw new PromptOnException(
+                    "model key " + id + " must match embedded provider and model " + expectedId);
         }
         return new Model(
-                modelId,
+                id,
                 provider,
                 providerModel,
                 Json.stringAt(raw, "display_name"),

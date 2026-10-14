@@ -484,10 +484,10 @@ class MonitoringLogTest {
     }
 
     @Test
-    void trackLogsTheSelectedNamedPromptEvidence() throws Exception {
+    void trackLogsTheExplicitDefaultPromptEvidence() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
             prompton.putUseCaseDocument(Fixtures.production());
-            UseCase korean = prompton.useCase("greeting", "ko");
+            UseCase korean = prompton.useCase("greeting", "default");
             List<Message> messages = korean.messages(Map.of("name", "Ada"));
 
             korean.track(TrackMeta.builder().inputMessages(messages).build(),
@@ -495,7 +495,7 @@ class MonitoringLogTest {
 
             Map<String, Object> logged = prompton.capturedLogs().get(0);
             assertEquals("greeting", logged.get("prompt_key"));
-            assertEquals("ko", logged.get("template"));
+            assertEquals("default", logged.get("template"));
             assertEquals(korean.promptVersionNumber(), logged.get("prompt_version_number"));
             assertFalse(logged.containsKey("prompt_version_id"));
         }

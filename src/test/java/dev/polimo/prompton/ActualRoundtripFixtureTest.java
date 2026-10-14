@@ -9,18 +9,20 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Optional check against server-captured flat schema-v9 fixtures. */
+/** Optional check against server-captured schema-v1 fixtures. */
 class ActualRoundtripFixtureTest {
 
     private static final Path FIXTURES = Path.of(System.getProperty(
             "promptonRoundtripFixtures",
-            "/Users/ys/ws/.omx/artifacts/single-prompt-20261014/roundtrip"));
+            System.getenv().getOrDefault("PROMPTON_ROUNDTRIP_FIXTURES", "build/roundtrip-fixtures")));
 
     @Test
-    void decodesActualFlatSchemaNineChatAndMatchesServerRenderRequest() throws Exception {
-        assumeTrue(Files.isDirectory(FIXTURES));
+    void decodesActualFlatSingleDetailChatAndMatchesServerRenderRequest() throws Exception {
+        assumeTrue(Files.isRegularFile(FIXTURES.resolve("chat-detail.json"))
+                && Files.isRegularFile(FIXTURES.resolve("chat-variables.json"))
+                && Files.isRegularFile(FIXTURES.resolve("chat-render.json")));
         UseCase useCase = Resolver.resolve(
-                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("chat-config.json"))),
+                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("chat-detail.json"))),
                 "support_reply");
         PreparedRequest request = useCase.request(readMap("chat-variables.json"));
         Map<String, Object> expected = Conformance.map(
@@ -32,10 +34,12 @@ class ActualRoundtripFixtureTest {
     }
 
     @Test
-    void decodesActualFlatSchemaNineDecisionAndMatchesServerRenderRequest() throws Exception {
-        assumeTrue(Files.isDirectory(FIXTURES));
+    void decodesActualFlatSingleDetailDecisionAndMatchesServerRenderRequest() throws Exception {
+        assumeTrue(Files.isRegularFile(FIXTURES.resolve("decision-detail.json"))
+                && Files.isRegularFile(FIXTURES.resolve("decision-variables.json"))
+                && Files.isRegularFile(FIXTURES.resolve("decision-render.json")));
         UseCase useCase = Resolver.resolve(
-                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("decision-config.json"))),
+                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("decision-detail.json"))),
                 "decision_triage");
         PreparedRequest request = useCase.request(readMap("decision-variables.json"));
         Map<String, Object> expected = Conformance.map(

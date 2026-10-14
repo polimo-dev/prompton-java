@@ -12,7 +12,7 @@ import java.util.Map;
  * <pre>
  * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved
  * version          = document.prompt_versions[deployment.template_pins[prompt or "default"]]
- * kind             = version.kind || use_case.kind                      # schema v5 fallback
+ * kind             = version.kind || use_case.kind
  * model            = document.models[deployment.model_id]
  * params           = use_case.default_params  &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
@@ -64,7 +64,8 @@ final class Resolver {
             throw UseCaseException.of(UseCaseException.Reason.UNRESOLVED, useCaseKey);
         }
 
-        List<String> promptNames = List.copyOf(deployment.promptPins().keySet());
+        List<String> promptNames = useCase.kind() == UseCaseKind.EMBEDDING
+                ? List.of() : List.copyOf(deployment.promptPins().keySet());
         String selected = null;
         String versionId = null;
         if (useCase.kind() != UseCaseKind.EMBEDDING) {
@@ -113,7 +114,7 @@ final class Resolver {
                 .pinnedKind(version == null ? null : version.kind())
                 .params(params)
                 .providerOptions(providerOptions)
-                .inputSchema(useCase.inputSchema())
+                .variables(useCase.variables())
                 .payloadPolicy(useCase.payloadPolicy())
                 .source(source)
                 .etag(etag)
@@ -121,11 +122,11 @@ final class Resolver {
 
         if (model != null) {
             builder.model(model.modelId())
-                    .modelId(document.schemaVersion() >= 8 ? null : model.id())
+                    .modelId(null)
                     .provider(model.provider());
         }
         if (version != null) {
-            builder.promptVersionId(document.schemaVersion() >= 8 ? null : version.id())
+            builder.promptVersionId(null)
                     .promptVersionNumber(version.number())
                     .engine(version.engine());
             if (runtimeKind == UseCaseKind.CHAT) {

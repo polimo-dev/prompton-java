@@ -40,7 +40,7 @@ public final class UseCase {
     private final List<Message> messages;
     private final String textTemplate;
     private final Decision decision;
-    private final List<Map<String, Object>> inputSchema;
+    private final List<Map<String, Object>> variables;
     private final PayloadPolicy payloadPolicy;
     private final Source source;
     private final String etag;
@@ -69,7 +69,7 @@ public final class UseCase {
         this.messages = builder.messages == null ? null : List.copyOf(builder.messages);
         this.textTemplate = builder.textTemplate;
         this.decision = builder.decision;
-        this.inputSchema = List.copyOf(builder.inputSchema);
+        this.variables = List.copyOf(builder.variables);
         this.payloadPolicy = builder.payloadPolicy;
         this.source = builder.source;
         this.etag = builder.etag;
@@ -125,7 +125,7 @@ public final class UseCase {
         return model;
     }
 
-    /** The legacy catalog UUID of the model, or {@code null} for schema v8 readable config. */
+    /** The legacy catalog UUID of the model, or {@code null} for readable configuration. */
     public String modelId() {
         return modelId;
     }
@@ -251,9 +251,9 @@ public final class UseCase {
                 options == null ? RequestOptions.empty() : options);
     }
 
-    /** The prompt's declared input variables. */
-    public List<Map<String, Object>> inputSchema() {
-        return inputSchema;
+    /** The prompt's declared variable definitions. */
+    public List<Map<String, Object>> variables() {
+        return variables;
     }
 
     /** How much of this call's text a monitoring log may carry. */
@@ -333,7 +333,7 @@ public final class UseCase {
         private List<Message> messages;
         private String textTemplate;
         private Decision decision;
-        private List<Map<String, Object>> inputSchema = List.of();
+        private List<Map<String, Object>> variables = List.of();
         private PayloadPolicy payloadPolicy = PayloadPolicy.DEFAULT;
         private Source source = Source.REMOTE;
         private String etag;
@@ -364,7 +364,7 @@ public final class UseCase {
             this.messages = source.messages;
             this.textTemplate = source.textTemplate;
             this.decision = source.decision;
-            this.inputSchema = source.inputSchema;
+            this.variables = source.variables;
             this.payloadPolicy = source.payloadPolicy;
             this.source = source.source;
             this.etag = source.etag;
@@ -502,9 +502,9 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the prompt's input schema */
-        public Builder inputSchema(List<Map<String, Object>> value) {
-            this.inputSchema = value == null ? List.of() : value;
+        /** @param value the prompt's variable definitions */
+        public Builder variables(List<Map<String, Object>> value) {
+            this.variables = value == null ? List.of() : value;
             return this;
         }
 

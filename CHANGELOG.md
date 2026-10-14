@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.8.0
+
+Breaking contract reset: prompt variable definitions are now `variables`, and only schema version 1 is accepted.
+
+- Decode singular prompt details and keyed offline bundles by shape, without old schema-version branches or `input_schema` aliases.
+- Keep runtime render values and native provider payloads unchanged.
+- Reject lightweight prompt-list responses as configuration; cache and export retain the original detail bytes.
+
 ## 0.7.1
 
 ### Changed

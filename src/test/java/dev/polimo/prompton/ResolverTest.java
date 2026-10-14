@@ -32,7 +32,7 @@ class ResolverTest {
                 () -> Resolver.resolve(SNAPSHOT, "greeting", "fr"));
         assertEquals(UseCaseException.Reason.UNKNOWN_PROMPT, e.reason());
         assertEquals("fr", e.prompt());
-        assertEquals(List.of("default", "ko"), e.promptNames());
+        assertEquals(List.of("default"), e.promptNames());
     }
 
     @Test
@@ -59,17 +59,61 @@ class ResolverTest {
     @Test
     void anExplicitNullOverrideIsKeptRatherThanRemovingTheKey() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 4, "project": "p", "environment": "production",
-             "prompts": {"greeting": {"id": "u1", "kind": "chat",
-                                        "default_params": {"temperature": 0.5, "seed": 7}}},
-             "deployments": {"greeting": {"id": "d1", "revision": "v2026.09.30-1", "model_id": "m1",
-                                          "params": {"seed": null},
-                                          "provider_options": {"only": null},
-                                          "template_pins": {"default": "v1"}}},
-             "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
-                                        "messages": [{"role": "user", "content": "hi"}]}},
-             "models": {"m1": {"id": "m1", "provider": "openrouter", "model_id": "openai/gpt-4o-mini",
-                               "provider_options": {"only": ["OpenAI"], "sort": "price"}}}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "greeting": {
+                  "kind": "chat",
+                  "default_params": {
+                    "temperature": 0.5,
+                    "seed": 7
+                  },
+                  "key": "greeting"
+                }
+              },
+              "deployments": {
+                "greeting": {
+                  "revision": "v2026.09.30-1",
+                  "params": {
+                    "seed": null
+                  },
+                  "provider_options": {
+                    "only": null
+                  },
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "prompt_version": 1
+                }
+              },
+              "prompt_versions": {
+                "greeting@1": {
+                  "number": 1,
+                  "engine": "liquid",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "hi"
+                    }
+                  ],
+                  "prompt": "greeting",
+                  "kind": "chat"
+                }
+              },
+              "models": {
+                "openrouter:openai/gpt-4o-mini": {
+                  "provider": "openrouter",
+                  "provider_options": {
+                    "only": [
+                      "OpenAI"
+                    ],
+                    "sort": "price"
+                  },
+                  "model": "openai/gpt-4o-mini"
+                }
+              }
+            }
             """);
         UseCase pin = Resolver.resolve(snapshot, "greeting");
 
@@ -84,11 +128,30 @@ class ResolverTest {
     @Test
     void deploymentRevisionMustBeAString() {
         PromptOnException e = assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 7, "project": "p", "environment": "production",
-             "prompts": {"greeting": {"id": "u1", "kind": "chat", "default_params": {}}},
-             "deployments": {"greeting": {"id": "d1", "revision": 1, "model_id": "m1",
-                                          "params": {}, "provider_options": {},
-                                          "template_pins": {"default": "v1"}}}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "greeting": {
+                  "kind": "chat",
+                  "default_params": {},
+                  "key": "greeting"
+                }
+              },
+              "deployments": {
+                "greeting": {
+                  "revision": 1,
+                  "params": {},
+                  "provider_options": {},
+                  "provider": "openrouter",
+                  "model": "m1",
+                  "prompt_version": 1
+                }
+              },
+              "models": {},
+              "prompt_versions": {}
+            }
             """));
         assertTrue(e.getMessage().contains("deployment revision must be a string"));
     }
@@ -96,20 +159,80 @@ class ResolverTest {
     @Test
     void nativeToolMessagesSurviveRenderingAsWholeProviderMaps() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 7, "project": "p", "environment": "production",
-             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
-             "deployments": {"tool_chat": {"id": "d1", "revision": "v2026.09.30-1", "model_id": "m1",
-                                          "params": {}, "provider_options": {},
-                                          "template_pins": {"default": "v1"}}},
-             "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
-                "messages": [
-                  {"role":"system","content":"Continue with {{ input }}."},
-                  {"role":"assistant","tool_calls":[{"id":"call_search","type":"function","function":{"name":"search","arguments":"{\\\"q\\\":\\\"diary\\\"}"}}],"content":null},
-                  {"role":"tool","tool_call_id":"call_search","content":[{"type":"text","text":"found"}]},
-                  {"role":"user","content":"Next: {{ input }}"}
-                ]}},
-             "models": {"m1": {"id": "m1", "provider": "openrouter", "model_id": "openai/gpt-4o-mini",
-                               "provider_options": {}, "capabilities": ["tools"], "status": "active"}}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "tool_chat": {
+                  "kind": "chat",
+                  "default_params": {},
+                  "key": "tool_chat"
+                }
+              },
+              "deployments": {
+                "tool_chat": {
+                  "revision": "v2026.09.30-1",
+                  "params": {},
+                  "provider_options": {},
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "prompt_version": 1
+                }
+              },
+              "prompt_versions": {
+                "tool_chat@1": {
+                  "number": 1,
+                  "engine": "liquid",
+                  "messages": [
+                    {
+                      "role": "system",
+                      "content": "Continue with {{ input }}."
+                    },
+                    {
+                      "role": "assistant",
+                      "tool_calls": [
+                        {
+                          "id": "call_search",
+                          "type": "function",
+                          "function": {
+                            "name": "search",
+                            "arguments": "{\\"q\\":\\"diary\\"}"
+                          }
+                        }
+                      ],
+                      "content": null
+                    },
+                    {
+                      "role": "tool",
+                      "tool_call_id": "call_search",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "found"
+                        }
+                      ]
+                    },
+                    {
+                      "role": "user",
+                      "content": "Next: {{ input }}"
+                    }
+                  ],
+                  "prompt": "tool_chat",
+                  "kind": "chat"
+                }
+              },
+              "models": {
+                "openrouter:openai/gpt-4o-mini": {
+                  "provider": "openrouter",
+                  "provider_options": {},
+                  "capabilities": [
+                    "tools"
+                  ],
+                  "status": "active",
+                  "model": "openai/gpt-4o-mini"
+                }
+              }
             }
             """);
         UseCase pin = Resolver.resolve(snapshot, "tool_chat");
@@ -131,19 +254,77 @@ class ResolverTest {
     @Test
     void promptToolsBecomeProviderParamsAndStripAuthoringMetadata() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 7, "project": "p", "environment": "production",
-             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
-             "deployments": {"tool_chat": {"id": "d1", "revision": "v2026.09.30-1", "model_id": "m1",
-                                          "params": {}, "provider_options": {},
-                                          "template_pins": {"default": "v1"}}},
-             "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
-                "messages": [{"role":"user","content":"hi"}],
-                "tools": {"definitions": [{"type":"function","function":{"name":"search"},
-                                             "output_schema":{"type":"object"},"output_examples":[{"ok":true}]}],
-                          "tool_choice": {"type":"function","function":{"name":"search"}},
-                          "parallel_tool_calls": false}}},
-             "models": {"m1": {"id": "m1", "provider": "openrouter", "model_id": "openai/gpt-4o-mini",
-                               "provider_options": {}, "capabilities": ["tools"], "status": "active"}}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "tool_chat": {
+                  "kind": "chat",
+                  "default_params": {},
+                  "key": "tool_chat"
+                }
+              },
+              "deployments": {
+                "tool_chat": {
+                  "revision": "v2026.09.30-1",
+                  "params": {},
+                  "provider_options": {},
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "prompt_version": 1
+                }
+              },
+              "prompt_versions": {
+                "tool_chat@1": {
+                  "number": 1,
+                  "engine": "liquid",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "hi"
+                    }
+                  ],
+                  "tools": {
+                    "definitions": [
+                      {
+                        "type": "function",
+                        "function": {
+                          "name": "search"
+                        },
+                        "output_schema": {
+                          "type": "object"
+                        },
+                        "output_examples": [
+                          {
+                            "ok": true
+                          }
+                        ]
+                      }
+                    ],
+                    "tool_choice": {
+                      "type": "function",
+                      "function": {
+                        "name": "search"
+                      }
+                    },
+                    "parallel_tool_calls": false
+                  },
+                  "prompt": "tool_chat",
+                  "kind": "chat"
+                }
+              },
+              "models": {
+                "openrouter:openai/gpt-4o-mini": {
+                  "provider": "openrouter",
+                  "provider_options": {},
+                  "capabilities": [
+                    "tools"
+                  ],
+                  "status": "active",
+                  "model": "openai/gpt-4o-mini"
+                }
+              }
             }
             """);
         UseCase pin = Resolver.resolve(snapshot, "tool_chat");
@@ -159,16 +340,57 @@ class ResolverTest {
     @Test
     void promptToolsConflictWithDifferentLegacyProviderParams() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 7, "project": "p", "environment": "production",
-             "prompts": {"tool_chat": {"id": "u1", "kind": "chat", "default_params": {}}},
-             "deployments": {"tool_chat": {"id": "d1", "revision": "v2026.09.30-1", "model_id": "m1",
-                                          "params": {"parallel_tool_calls": true}, "provider_options": {},
-                                          "template_pins": {"default": "v1"}}},
-             "prompt_versions": {"v1": {"id": "v1", "number": 1, "engine": "liquid",
-                "messages": [{"role":"user","content":"hi"}],
-                "tools": {"parallel_tool_calls": false}}},
-             "models": {"m1": {"id": "m1", "provider": "openrouter", "model_id": "openai/gpt-4o-mini",
-                               "provider_options": {}, "capabilities": ["tools"], "status": "active"}}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "tool_chat": {
+                  "kind": "chat",
+                  "default_params": {},
+                  "key": "tool_chat"
+                }
+              },
+              "deployments": {
+                "tool_chat": {
+                  "revision": "v2026.09.30-1",
+                  "params": {
+                    "parallel_tool_calls": true
+                  },
+                  "provider_options": {},
+                  "provider": "openrouter",
+                  "model": "openai/gpt-4o-mini",
+                  "prompt_version": 1
+                }
+              },
+              "prompt_versions": {
+                "tool_chat@1": {
+                  "number": 1,
+                  "engine": "liquid",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "hi"
+                    }
+                  ],
+                  "tools": {
+                    "parallel_tool_calls": false
+                  },
+                  "prompt": "tool_chat",
+                  "kind": "chat"
+                }
+              },
+              "models": {
+                "openrouter:openai/gpt-4o-mini": {
+                  "provider": "openrouter",
+                  "provider_options": {},
+                  "capabilities": [
+                    "tools"
+                  ],
+                  "status": "active",
+                  "model": "openai/gpt-4o-mini"
+                }
+              }
             }
             """);
         assertThrows(PromptOnException.class, () -> Resolver.resolve(snapshot, "tool_chat"));
@@ -176,7 +398,7 @@ class ResolverTest {
 
     @Test
     void promptNamesListsWhatTheLiveDeploymentPins() {
-        assertEquals(List.of("default", "ko"), SNAPSHOT.promptNames("greeting"));
+        assertEquals(List.of("default"), SNAPSHOT.promptNames("greeting"));
         assertEquals(List.of(), SNAPSHOT.promptNames("draft"));
         assertThrows(UseCaseException.class, () -> SNAPSHOT.promptNames("nope"));
     }
@@ -184,24 +406,42 @@ class ResolverTest {
     @Test
     void aSnapshotThatReferencesWhatItDoesNotContainStillResolvesWithWarnings() {
         UseCaseDocument degraded = UseCaseDocument.parse("""
-            {"schema_version": 4, "project": "p", "environment": "production",
-             "prompts": {"greeting": {"id": "u1", "kind": "chat", "default_params": {}}},
-             "deployments": {"greeting": {"id": "d1", "revision": "v2026.09.30-1", "model_id": "gone",
-                                          "params": {}, "provider_options": {},
-                                          "template_pins": {"default": "missing"}}},
-             "prompt_versions": {}, "models": {}}
+            {
+              "schema_version": 1,
+              "project": "p",
+              "environment": "production",
+              "prompts": {
+                "greeting": {
+                  "kind": "chat",
+                  "default_params": {},
+                  "key": "greeting"
+                }
+              },
+              "deployments": {
+                "greeting": {
+                  "revision": "v2026.09.30-1",
+                  "params": {},
+                  "provider_options": {},
+                  "provider": "openrouter",
+                  "model": "gone",
+                  "prompt_version": 1
+                }
+              },
+              "prompt_versions": {},
+              "models": {}
+            }
             """);
         UseCase pin = Resolver.resolve(degraded, "greeting");
         assertNull(pin.model());
         assertNull(pin.promptVersionId());
-        assertEquals(List.of("missing_prompt_version: missing", "missing_model: gone"),
+        assertEquals(List.of("missing_prompt_version: greeting@1", "missing_model: openrouter:gone"),
                 pin.warnings());
     }
 
     @Test
-    void schemaEightUsesReadableResourceReferencesWithoutPublicIds() {
+    void offlineBundleUsesReadableResourceReferencesWithoutPublicIds() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {
                "greeting": {"kind": "chat", "default_params": {"temperature": 0.5}},
                "classify": {"kind": "decision", "default_params": {}}
@@ -234,7 +474,7 @@ class ResolverTest {
             """);
 
         UseCase greeting = Resolver.resolve(snapshot, "greeting");
-        assertEquals(8, snapshot.schemaVersion());
+        assertEquals(1, snapshot.schemaVersion());
         assertNull(greeting.deploymentId());
         assertNull(greeting.modelId());
         assertNull(greeting.promptVersionId());
@@ -253,9 +493,9 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightWarningsUseReadableMissingReferences() {
+    void offlineBundleWarningsUseReadableMissingReferences() {
         UseCaseDocument degraded = UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                           "model": "missing:model", "prompt_version": 3,
@@ -270,9 +510,9 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightRejectsPromptVersionKeysThatDoNotMatchEmbeddedPromptAndNumber() {
+    void offlineBundleRejectsPromptVersionKeysThatDoNotMatchEmbeddedPromptAndNumber() {
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                           "model": "m", "prompt_version": 2,
@@ -287,9 +527,9 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightRejectsModelKeysThatDoNotMatchEmbeddedProviderAndModel() {
+    void offlineBundleRejectsModelKeysThatDoNotMatchEmbeddedProviderAndModel() {
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                           "model": "m", "prompt_version": 2,
@@ -304,9 +544,9 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightPreservesModelNamesContainingColons() {
+    void offlineBundlePreservesModelNamesContainingColons() {
         UseCaseDocument snapshot = UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                           "model": "vendor:model:with:colon", "prompt_version": 2,
@@ -324,7 +564,7 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightRejectsInvalidDeploymentPromptVersionValues() {
+    void offlineBundleRejectsInvalidDeploymentPromptVersionValues() {
         List<String> invalidFragments = List.of(
                 "",
                 ", \"prompt_version\": true",
@@ -334,7 +574,7 @@ class ResolverTest {
                 ", \"prompt_version\": -1");
         for (String fragment : invalidFragments) {
             assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-                {"schema_version": 8, "project": "p", "environment": "production",
+                {"schema_version": 1, "project": "p", "environment": "production",
                  "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
                  "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                               "model": "m"%s,
@@ -350,9 +590,9 @@ class ResolverTest {
     }
 
     @Test
-    void schemaEightDoesNotAcceptLegacyDeploymentAliases() {
+    void offlineBundleDoesNotAcceptLegacyDeploymentAliases() {
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 8, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "model_id": "openrouter:m",
                                           "template_pins": {"default": "greeting@2"},
@@ -367,13 +607,13 @@ class ResolverTest {
     }
 
     @Test
-    void schemaNineSinglePromptChatDocumentsResolveFromSingularResources() {
-        UseCaseDocument document = UseCaseDocument.parse(schemaNineChat());
+    void singleDetailSinglePromptChatDocumentsResolveFromSingularResources() {
+        UseCaseDocument document = UseCaseDocument.parse(singleDetailChat());
 
         UseCase useCase = Resolver.resolve(document, "support_reply");
         PreparedRequest request = useCase.request(Map.of("question", "pricing", "plan", "pro"));
 
-        assertEquals(9, document.schemaVersion());
+        assertEquals(1, document.schemaVersion());
         assertEquals("support_reply", useCase.key());
         assertEquals("openrouter", useCase.provider());
         assertEquals("anthropic/claude-sonnet-4", useCase.model());
@@ -390,8 +630,8 @@ class ResolverTest {
     }
 
     @Test
-    void schemaNineSinglePromptDecisionDocumentsPrepareDecisionRequests() {
-        UseCaseDocument document = UseCaseDocument.parse(schemaNineDecision());
+    void singleDetailSinglePromptDecisionDocumentsPrepareDecisionRequests() {
+        UseCaseDocument document = UseCaseDocument.parse(singleDetailDecision());
 
         UseCase useCase = Resolver.resolve(document, "decision_triage");
         PreparedRequest request = useCase.request(Map.of(
@@ -420,12 +660,12 @@ class ResolverTest {
     }
 
     @Test
-    void schemaNineRejectsIncompleteMixedOrMismatchedSinglePromptDocuments() {
+    void singleDetailRejectsIncompleteMixedOrMismatchedSinglePromptDocuments() {
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 9, "project": "p", "environment": "production", "prompts": {}}
+            {"schema_version": 1, "project": "p", "environment": "production", "prompts": {}}
             """));
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 9, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 2},
              "prompt_version": {"prompt": "other", "number": 2, "kind": "chat", "engine": "liquid",
@@ -433,7 +673,7 @@ class ResolverTest {
              "model": {"provider": "openrouter", "model": "m"}}
             """));
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 9, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 3},
              "prompt_version": {"prompt": "greeting", "number": 2, "kind": "chat", "engine": "liquid",
@@ -441,7 +681,7 @@ class ResolverTest {
              "model": {"provider": "openrouter", "model": "m"}}
             """));
         assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
-            {"schema_version": 9, "project": "p", "environment": "production",
+            {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 2},
              "prompt_version": {"prompt": "greeting", "number": 2, "kind": "chat", "engine": "liquid",
@@ -450,11 +690,11 @@ class ResolverTest {
             """));
     }
 
-    private static String schemaNineChat() {
+    private static String singleDetailChat() {
         return """
-            {"schema_version":9,"project":"heydiary-10242","environment":"production",
+            {"schema_version":1,"project":"heydiary-10242","environment":"production",
              "prompt":{"key":"support_reply","kind":"chat",
-                       "input_schema":[{"name":"plan","required":false,"type":"string"},
+                       "variables":[{"name":"plan","required":false,"type":"string"},
                                        {"name":"question","required":false,"type":"string"}],
                        "default_params":{},"payload_policy":{"mode":"full","sample_rate":1.0,
                        "max_bytes":262144,"retention_days":30,"encrypt":true}},
@@ -472,11 +712,11 @@ class ResolverTest {
             """;
     }
 
-    private static String schemaNineDecision() {
+    private static String singleDetailDecision() {
         return """
-            {"schema_version":9,"project":"heydiary-10242","environment":"production",
+            {"schema_version":1,"project":"heydiary-10242","environment":"production",
              "prompt":{"key":"decision_triage","kind":"decision",
-                       "input_schema":[{"name":"plan","required":false,"type":"string"},
+                       "variables":[{"name":"plan","required":false,"type":"string"},
                                        {"name":"region","required":false,"type":"string"},
                                        {"name":"ticket","required":false,"type":"string"}],
                        "default_params":{},"payload_policy":{"mode":"full","sample_rate":1.0,

@@ -44,7 +44,7 @@ class PromptOnConfigTest {
         assertEquals(10_000, config.logMaxBuffer());
         assertEquals(Mode.LIVE, config.mode());
         assertEquals(PayloadPolicy.DEFAULT, config.payloadDefaults());
-        assertEquals("prompton-java/0.7.1", config.userAgent());
+        assertEquals("prompton-java/0.8.0", config.userAgent());
         if (System.getenv("PTN_HOST") == null) {
             assertEquals("https://app.prompton.ai/api/v1", config.baseUrl());
         }

@@ -291,7 +291,7 @@ class SnapshotCacheTest {
     }
 
     @Test
-    void schemaEightBundleLoadsWithReadableRefsAndNoPublicIds() {
+    void offlineBundleBundleLoadsWithReadableRefsAndNoPublicIds() {
         Path bundle = tempDir.resolve("prompts.production.json");
         assertTrue(DiskCache.write(bundle, readableSchemaEight(), Map.of(
                 "environment", "production", "project", "sdkfixture")));
@@ -311,8 +311,8 @@ class SnapshotCacheTest {
     }
 
     @Test
-    void schemaNineSinglePromptCacheAndExportPreserveOriginalBytes() throws Exception {
-        String body = schemaNineSinglePrompt();
+    void singleDetailSinglePromptCacheAndExportPreserveOriginalBytes() throws Exception {
+        String body = singleDetailSinglePrompt();
         server.handle(request -> StubServer.Reply.ok(body)
                 .withHeader("etag", "\"single-v1\"")
                 .withHeader("last-modified", "Fri, 04 Sep 2026 00:21:48 GMT"));
@@ -388,9 +388,9 @@ class SnapshotCacheTest {
 
     private static String readableSchemaEight() {
         return """
-            {"schema_version": 8, "project": "sdkfixture", "environment": "production",
+            {"schema_version": 1, "project": "sdkfixture", "environment": "production",
              "prompts": {"greeting": {"kind": "chat",
-                                      "input_schema": [{"name":"name","type":"string","required":true}],
+                                      "variables": [{"name":"name","type":"string","required":true}],
                                       "default_params": {"max_tokens": 512}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
                                           "model": "openai/gpt-4o-mini", "prompt_version": 2,
@@ -408,10 +408,10 @@ class SnapshotCacheTest {
             """;
     }
 
-    private static String schemaNineSinglePrompt() {
+    private static String singleDetailSinglePrompt() {
         return """
-            {"schema_version":9,"project":"sdkfixture","environment":"production",
-             "prompt":{"key":"support_reply","kind":"chat","input_schema":[],
+            {"schema_version":1,"project":"sdkfixture","environment":"production",
+             "prompt":{"key":"support_reply","kind":"chat","variables":[],
                        "default_params":{},"payload_policy":{"mode":"full","sample_rate":1.0,
                        "max_bytes":262144}},
              "deployment":{"revision":"v2026.10.14-1","provider":"openrouter",

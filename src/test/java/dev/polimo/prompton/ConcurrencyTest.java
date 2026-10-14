@@ -73,7 +73,7 @@ class ConcurrencyTest {
                     try {
                         start.await();
                         for (int i = 0; i < perThread; i++) {
-                            UseCase pin = prompton.useCase("greeting", i % 2 == 0 ? null : "ko");
+                            UseCase pin = prompton.useCase("greeting", i % 2 == 0 ? null : "default");
                             List<Message> messages =
                                     pin.messages(Map.of("name", "Ada"));
                             assertEquals(2, messages.size());

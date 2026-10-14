@@ -115,13 +115,13 @@ public final class QuickStart {
 
     private static final String BUILT_IN_SNAPSHOT = """
         {
-          "schema_version": 8,
+          "schema_version": 1,
           "project": "example",
           "environment": "production",
           "prompts": {
             "greeting": {
               "kind": "chat",
-              "input_schema": [{"name": "name", "type": "string", "required": true}],
+              "variables": [{"name": "name", "type": "string", "required": true}],
               "default_params": {"max_tokens": 256},
               "payload_policy": {"mode": "full", "sample_rate": 1.0, "max_bytes": 262144}
             }
