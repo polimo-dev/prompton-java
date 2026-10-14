@@ -120,10 +120,12 @@ final class Resolver {
                 .warnings(warnings);
 
         if (model != null) {
-            builder.model(model.modelId()).modelId(model.id()).provider(model.provider());
+            builder.model(model.modelId())
+                    .modelId(document.schemaVersion() >= 8 ? null : model.id())
+                    .provider(model.provider());
         }
         if (version != null) {
-            builder.promptVersionId(version.id())
+            builder.promptVersionId(document.schemaVersion() >= 8 ? null : version.id())
                     .promptVersionNumber(version.number())
                     .engine(version.engine());
             if (runtimeKind == UseCaseKind.CHAT) {

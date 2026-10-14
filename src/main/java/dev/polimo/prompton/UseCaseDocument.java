@@ -11,7 +11,7 @@ import java.util.TreeMap;
 /**
  * A parsed PromptOn prompt document — either a bundle or one demand-fetched prompt key.
  *
- * <p>The SDK reads schema versions 4 through 7. The {@code schema_version} field must be a JSON
+ * <p>The SDK reads schema versions 4 through 8. The {@code schema_version} field must be a JSON
  * integer in that range; missing, non-integral, and unsupported version values are refused ({@link #parse}
  * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
  * version per prompt name.
@@ -19,12 +19,12 @@ import java.util.TreeMap;
 public final class UseCaseDocument {
 
     /** The schema version this SDK reads. */
-    public static final int SCHEMA_VERSION = 7;
+    public static final int SCHEMA_VERSION = 8;
 
     /**
      * One prompt: what shape of call it is and what its logs may carry.
      *
-     * @param id the prompt's UUID
+     * @param id the prompt's legacy UUID, or {@code null} for schema v8
      * @param key the stable key one call site is known by
      * @param kind chat, decision, text or embedding
      * @param inputSchema the variables the prompt declares
@@ -42,10 +42,10 @@ public final class UseCaseDocument {
     /**
      * One live deployment revision: the pin.
      *
-     * @param id the revision's UUID
+     * @param id the revision's legacy UUID, or {@code null} for schema v8
      * @param useCaseKey the prompt it pins
      * @param revision the UTC-date revision label, for example {@code v2026.09.30-1}
-     * @param modelId the catalog UUID of the model it pins
+     * @param modelId the model lookup key it pins
      * @param api provider API family, present in schema v6+
      * @param requestPath origin-relative provider request path, present in schema v6+
      * @param params the params layered over the prompt's defaults
@@ -66,8 +66,8 @@ public final class UseCaseDocument {
     /**
      * One immutable prompt version.
      *
-     * @param id the version's UUID, which a deployment pins
-     * @param promptId the prompt this is a version of
+     * @param id the version lookup key
+     * @param promptId the prompt this is a version of, when supplied by the document
      * @param number the version number, counting up from 1
      * @param kind immutable version kind, present in schema v6+
      * @param engine liquid or raw
@@ -89,7 +89,7 @@ public final class UseCaseDocument {
     /**
      * One catalog model.
      *
-     * @param id the catalog UUID a deployment pins
+     * @param id the model lookup key
      * @param provider which provider to call
      * @param modelId the provider model string the app sends to the provider, byte for byte
      * @param displayName a human-readable name
@@ -265,24 +265,35 @@ public final class UseCaseDocument {
     private static Deployment readDeployment(
             String key, Map<String, Object> raw, int schemaVersion, List<String> warnings) {
         Map<String, String> pins = new TreeMap<>();
-        Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
-        if (rawPins != null) {
-            rawPins.forEach((name, id) -> {
-                if (id instanceof String versionId) {
-                    pins.put(name, versionId);
-                } else {
-                    warnings.add("invalid_prompt_pin: " + key + "/" + name);
-                }
-            });
+        if (schemaVersion >= 8) {
+            Integer version = Json.intAt(raw, "prompt_version", null);
+            if (version != null && version > 0) {
+                pins.put("default", key + "@" + version);
+            } else if (version != null) {
+                warnings.add("invalid_prompt_pin: " + key + "/default");
+            }
+        } else {
+            Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
+            if (rawPins != null) {
+                rawPins.forEach((name, id) -> {
+                    if (id instanceof String versionId) {
+                        pins.put(name, versionId);
+                    } else {
+                        warnings.add("invalid_prompt_pin: " + key + "/" + name);
+                    }
+                });
+            }
         }
         Map<String, Object> params = Json.mapAt(raw, "params");
         Map<String, Object> providerOptions = Json.mapAt(raw, "provider_options");
         String useCaseKey = Json.stringAt(raw, "use_case_key");
         return new Deployment(
-                Json.stringAt(raw, "id"),
+                schemaVersion >= 8 ? null : Json.stringAt(raw, "id"),
                 useCaseKey == null ? key : useCaseKey,
                 readRevision(raw, "revision"),
-                Json.stringAt(raw, "model_id"),
+                schemaVersion >= 8
+                        ? readableModelKey(Json.stringAt(raw, "provider"), Json.stringAt(raw, "model"))
+                        : Json.stringAt(raw, "model_id"),
                 schemaVersion >= 6 ? Json.stringAt(raw, "api") : null,
                 schemaVersion >= 6 ? Json.stringAt(raw, "request_path") : null,
                 frozen(params),
@@ -316,8 +327,8 @@ public final class UseCaseDocument {
         }
         String versionId = Json.stringAt(raw, "id");
         return new PromptVersion(
-                versionId == null ? id : versionId,
-                Json.stringAt(raw, "prompt_id"),
+                schemaVersion >= 8 || versionId == null ? id : versionId,
+                schemaVersion >= 8 ? Json.stringAt(raw, "prompt") : Json.stringAt(raw, "prompt_id"),
                 Json.intAt(raw, "number", null),
                 schemaVersion >= 6 && Json.stringAt(raw, "kind") != null
                         ? UseCaseKind.fromRequired(Json.stringAt(raw, "kind"))
@@ -342,15 +353,23 @@ public final class UseCaseDocument {
         Map<String, Object> metadata = Json.mapAt(raw, "metadata");
         Map<String, Object> providerOptions = Json.mapAt(raw, "provider_options");
         String modelUuid = Json.stringAt(raw, "id");
+        String providerModel = Json.stringAt(raw, "model");
         return new Model(
                 modelUuid == null ? id : modelUuid,
                 Json.stringAt(raw, "provider"),
-                Json.stringAt(raw, "model_id"),
+                providerModel == null ? Json.stringAt(raw, "model_id") : providerModel,
                 Json.stringAt(raw, "display_name"),
                 frozen(metadata),
                 frozen(providerOptions),
                 List.copyOf(capabilities),
                 Json.stringAt(raw, "status"));
+    }
+
+    private static String readableModelKey(String provider, String model) {
+        if (provider == null || model == null) {
+            return null;
+        }
+        return provider + ":" + model;
     }
 
     /** The schema version of the document that was parsed. */

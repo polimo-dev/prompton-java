@@ -1,6 +1,7 @@
 package dev.polimo.prompton;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -289,6 +290,26 @@ class SnapshotCacheTest {
         }
     }
 
+    @Test
+    void schemaEightBundleLoadsWithReadableRefsAndNoPublicIds() {
+        Path bundle = tempDir.resolve("prompts.production.json");
+        assertTrue(DiskCache.write(bundle, readableSchemaEight(), Map.of(
+                "environment", "production", "project", "sdkfixture")));
+        try (PromptOn prompton = PromptOn.create(config()
+                .diskCacheEnabled(false)
+                .bundlePath(bundle)
+                .build())) {
+            UseCase pin = prompton.useCase("greeting");
+            assertEquals("openai/gpt-4o-mini", pin.model());
+            assertEquals("openrouter", pin.provider());
+            assertEquals(2, pin.promptVersionNumber());
+            assertNull(pin.deploymentId());
+            assertNull(pin.modelId());
+            assertNull(pin.promptVersionId());
+            assertEquals("Hi Ada", pin.messages(Map.of("name", "Ada")).get(0).content());
+        }
+    }
+
     private static void repeatUseCase(PromptOn prompton, String key, int count) {
         for (int i = 0; i < count; i++) {
             prompton.useCase(key);
@@ -333,6 +354,28 @@ class SnapshotCacheTest {
         } catch (Exception e) {
             throw new AssertionError(e);
         }
+    }
+
+    private static String readableSchemaEight() {
+        return """
+            {"schema_version": 8, "project": "sdkfixture", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat",
+                                      "input_schema": [{"name":"name","type":"string","required":true}],
+                                      "default_params": {"max_tokens": 512}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                          "model": "openai/gpt-4o-mini", "prompt_version": 2,
+                                          "params": {"temperature": 0.2}, "provider_options": {},
+                                          "api": "chat_completions",
+                                          "request_path": "/api/v1/chat/completions"}},
+             "prompt_versions": {"greeting@2": {"prompt": "greeting", "number": 2, "kind": "chat",
+                                                "engine": "liquid",
+                                                "messages": [{"role": "user", "content": "Hi {{ name }}"}]}},
+             "models": {"openrouter:openai/gpt-4o-mini": {"provider": "openrouter",
+                                                          "model": "openai/gpt-4o-mini",
+                                                          "display_name": "GPT-4o mini",
+                                                          "metadata": {}, "provider_options": {},
+                                                          "capabilities": [], "status": "active"}}}
+            """;
     }
 
     @FunctionalInterface

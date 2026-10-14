@@ -1,6 +1,7 @@
 package dev.polimo.prompton;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,6 +120,31 @@ class ResolveClientTest {
             UseCase second = prompton.useCaseRemote("sentiment", null, Map.of("diary", "Today was bright"));
             assertEquals(first.providerPreparedRequest(), second.providerPreparedRequest());
             assertEquals(2, calls.get(), "server rendering with variables is not cached");
+        }
+    }
+
+    @Test
+    void remoteRenderingAcceptsReadableResponsesWithoutResourceIds() {
+        server.handle(request -> StubServer.Reply.ok("""
+            {"key":"greeting","kind":"chat",
+             "deployment":{"revision": "v2026.10.14-1"},
+             "template":"default","template_names":["default"],
+             "model":"openai/gpt-4o-mini","provider":"openrouter",
+             "api":"chat_completions","request_path":"/api/v1/chat/completions",
+             "params":{"temperature":0.2},"provider_options":{"allow_fallbacks":false},
+             "prompt_version":{"number":2,"kind":"chat"},
+             "messages":[{"role":"user","content":"Say hello"}],
+             "warnings":[],"etag":"sha256-v8","source":"remote"}
+            """));
+        try (PromptOn prompton = client()) {
+            UseCase pin = prompton.useCaseRemote("greeting", null);
+            assertNull(pin.deploymentId());
+            assertNull(pin.modelId());
+            assertNull(pin.promptVersionId());
+            assertEquals(2, pin.promptVersionNumber());
+            assertEquals("openai/gpt-4o-mini", pin.model());
+            assertEquals("openrouter", pin.provider());
+            assertEquals("Say hello", pin.messages().get(0).content());
         }
     }
 

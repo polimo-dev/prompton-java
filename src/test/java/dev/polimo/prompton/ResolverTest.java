@@ -195,4 +195,83 @@ class ResolverTest {
         assertEquals(List.of("missing_prompt_version: missing", "missing_model: gone"),
                 pin.warnings());
     }
+
+    @Test
+    void schemaEightUsesReadableResourceReferencesWithoutPublicIds() {
+        UseCaseDocument snapshot = UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {
+               "greeting": {"kind": "chat", "default_params": {"temperature": 0.5}},
+               "classify": {"kind": "decision", "default_params": {}}
+             },
+             "deployments": {
+               "greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                            "model": "shared/model", "prompt_version": 2,
+                            "params": {"temperature": 0.2}, "provider_options": {"allow_fallbacks": false},
+                            "api": "chat_completions", "request_path": "/api/v1/chat/completions"},
+               "classify": {"revision": "v2026.10.14-2", "provider": "anthropic",
+                            "model": "shared/model", "prompt_version": 2,
+                            "params": {}, "provider_options": {},
+                            "api": "decisions", "request_path": "/api/v1/decisions"}
+             },
+             "prompt_versions": {
+               "greeting@2": {"prompt": "greeting", "number": 2, "kind": "chat", "engine": "liquid",
+                              "messages": [{"role": "user", "content": "Hello {{ name }}"}]},
+               "classify@2": {"prompt": "classify", "number": 2, "kind": "decision", "engine": "liquid",
+                               "decision": {"state": {"text": "{{ text }}"},
+                                            "questions": {"ok": {"type": "noul", "instructions": "Accept?"}}}}
+             },
+             "models": {
+               "openrouter:shared/model": {"provider": "openrouter", "model": "shared/model",
+                                           "display_name": "OpenRouter shared", "provider_options": {"only": ["OpenAI"]},
+                                           "metadata": {}, "capabilities": ["tools"], "status": "active"},
+               "anthropic:shared/model": {"provider": "anthropic", "model": "shared/model",
+                                          "display_name": "Anthropic shared", "provider_options": {},
+                                          "metadata": {}, "capabilities": [], "status": "active"}
+             }}
+            """);
+
+        UseCase greeting = Resolver.resolve(snapshot, "greeting");
+        assertEquals(8, snapshot.schemaVersion());
+        assertNull(greeting.deploymentId());
+        assertNull(greeting.modelId());
+        assertNull(greeting.promptVersionId());
+        assertEquals(2, greeting.promptVersionNumber());
+        assertEquals("openrouter", greeting.provider());
+        assertEquals("shared/model", greeting.model());
+        assertEquals("Hello Ada", greeting.messages(Map.of("name", "Ada")).get(0).content());
+
+        UseCase classify = Resolver.resolve(snapshot, "classify");
+        assertNull(classify.modelId());
+        assertNull(classify.promptVersionId());
+        assertEquals(2, classify.promptVersionNumber());
+        assertEquals("anthropic", classify.provider());
+        assertEquals(UseCaseKind.DECISION, classify.kind());
+        assertEquals(Map.of("text", "great"), classify.decision(Map.of("text", "great")).state());
+    }
+
+    @Test
+    void schemaEightWarningsUseReadableMissingReferences() {
+        UseCaseDocument degraded = UseCaseDocument.parse("""
+            {"schema_version": 8, "project": "p", "environment": "production",
+             "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
+             "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
+                                          "model": "missing:model", "prompt_version": 3,
+                                          "params": {}, "provider_options": {}}},
+             "prompt_versions": {}, "models": {}}
+            """);
+        UseCase pin = Resolver.resolve(degraded, "greeting");
+        assertEquals(List.of("missing_prompt_version: greeting@3", "missing_model: openrouter:missing:model"),
+                pin.warnings());
+        assertNull(pin.modelId());
+        assertNull(pin.promptVersionId());
+    }
+
+    @Test
+    void schemaNineIsStillUnsupportedUntilTheContractChangesAgain() {
+        PromptOnException error = assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            {"schema_version": 9, "project": "p", "environment": "production", "prompts": {}}
+            """));
+        assertTrue(error.getMessage().contains("this SDK reads version 8"));
+    }
 }

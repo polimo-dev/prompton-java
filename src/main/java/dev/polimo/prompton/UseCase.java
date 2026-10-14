@@ -125,7 +125,7 @@ public final class UseCase {
         return model;
     }
 
-    /** The catalog UUID of the model, for the monitoring log. */
+    /** The legacy catalog UUID of the model, or {@code null} for schema v8 readable config. */
     public String modelId() {
         return modelId;
     }
@@ -418,7 +418,7 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the catalog model UUID */
+        /** @param value the legacy catalog model UUID */
         public Builder modelId(String value) {
             this.modelId = value;
             return this;

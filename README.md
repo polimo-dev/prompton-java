@@ -24,10 +24,10 @@ keeps working when PromptOn does not.
 
 ## Install
 
-Build the v0.6.1 GitHub source release and install it into your local Maven repository:
+Build the v0.7.0 GitHub source release and install it into your local Maven repository:
 
 ```sh
-git clone --branch v0.6.1 --depth 1 https://github.com/polimo-dev/prompton-java.git
+git clone --branch v0.7.0 --depth 1 https://github.com/polimo-dev/prompton-java.git
 cd prompton-java
 ./gradlew publishToMavenLocal
 ```
@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.6.1")
+    implementation("dev.polimo:prompton-sdk:0.7.0")
 }
 ```
 
@@ -49,7 +49,7 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.6.1</version>
+  <version>0.7.0</version>
 </dependency>
 ```
 
@@ -139,10 +139,11 @@ UseCase korean = prompton.useCase("support_reply", "ko"); // a named prompt
 List<String> names = prompton.promptNames("support_reply");  // ["default", "ko"]
 ```
 
-A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()`,
+A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (legacy
+schema only),
 `deploymentRevision()`, `prompt()`, `promptNames()`, `model()` (the provider string to send),
-`modelId()` (the catalog UUID), `provider()`, `api()`, `requestPath()`, `params()`,
-`providerOptions()`, `promptVersionId()`, `promptVersionNumber()`, and the raw template as
+`modelId()` (legacy schema only), `provider()`, `api()`, `requestPath()`, `params()`,
+`providerOptions()`, `promptVersionId()` (legacy schema only), `promptVersionNumber()`, and the raw template as
 `messages()` (chat), `decision()` (Decision), or `textTemplate()` (text). An embedding prompt has
 none of those templates.
 
@@ -266,7 +267,7 @@ prompton.log(LogRecord.builder()
 | `id` | UUIDv7, the idempotency key. The SDK issues one; a resend is counted as a duplicate, never stored twice |
 | `prompt_key`, `model`, `status`, `started_at` | Required. `status` is `ok` or `error`; `started_at` must be within 5 minutes ahead and 7 days behind |
 | `kind` | `chat`, `decision`, `text` or `embedding` |
-| `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `UseCase`. Snapshot and response objects still expose internal ids such as `deploymentId()`, `promptVersionId()` and `modelId()` |
+| `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `UseCase`. In schema v8, deprecated id accessors such as `deploymentId()`, `promptVersionId()` and `modelId()` remain null |
 | `source` | `remote`, `disk`, `bundle` or `manual` — which tier answered |
 | `provider`, `model_used`, `upstream_provider` | Who actually served the call |
 | `params` | What was sent. The server blanks it over 4 KB rather than rejecting the record |
@@ -277,7 +278,7 @@ prompton.log(LogRecord.builder()
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.6.1"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.7.0"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 
@@ -436,6 +437,6 @@ logo; forks and derived services must use a different name.
 
 ## Prompt tools and trace events
 
-Schema 7 prompt versions may include a `tools` block with OpenAI-compatible function tool definitions plus optional `tool_choice` and `parallel_tool_calls`. The SDK merges those into the provider params it returns and strips authoring-only `output_schema` / `output_examples` before the provider request body is built. The SDK never calls tools itself.
+Schema 7+ prompt versions may include a `tools` block with OpenAI-compatible function tool definitions plus optional `tool_choice` and `parallel_tool_calls`. The SDK merges those into the provider params it returns and strips authoring-only `output_schema` / `output_examples` before the provider request body is built. The SDK never calls tools itself.
 
 Use `logEvents` to submit observed tool attempts and completion events to the same monitoring endpoint when your application has executed or rejected tool calls. Events require `trace_id`, `event_kind`, and `status`; the SDK fills `event_id`, `observed_at`, SDK identity, and `metadata.sdk.version` when they are absent. Completion events whose `completion_output` is exactly the closed Req transport error are omitted after validation.
