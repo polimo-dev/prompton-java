@@ -11,9 +11,9 @@ import java.util.Map;
  *
  * <pre>
  * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved
- * version          = document.prompt_versions[deployment.template_pins[prompt or "default"]]
+ * version          = document.prompt_versions[key + "@" + deployment.prompt_version]
  * kind             = version.kind || use_case.kind
- * model            = document.models[deployment.model_id]
+ * model            = document.models[deployment.provider + ":" + deployment.model]
  * params           = use_case.default_params  &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
  * </pre>

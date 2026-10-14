@@ -138,8 +138,7 @@ UseCase useCase = prompton.useCase("support_reply");         // the implicit def
 List<String> names = prompton.promptNames("support_reply");  // ["default"]
 ```
 
-A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (legacy
-schema only),
+A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (reserved; always null),
 `deploymentRevision()`, `prompt()`, `promptNames()`, `model()` (the provider string to send),
 `modelId()` (reserved; always null), `provider()`, `api()`, `requestPath()`, `params()`,
 `providerOptions()`, `promptVersionId()` (reserved; always null), `promptVersionNumber()`, and the raw template as
