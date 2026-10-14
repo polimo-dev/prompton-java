@@ -166,9 +166,12 @@ final class ResolveClient {
                 .model(Json.stringAt(body, "model"))
                 .modelId(Json.stringAt(body, "model_id"))
                 .provider(Json.stringAt(body, "provider"))
+                .api(Json.stringAt(body, "api"))
+                .requestPath(Json.stringAt(body, "request_path"))
+                .pinnedKind(readPinnedKind(body, version))
                 .params(Params.mergeTools(Json.mapAt(body, "params"), Json.mapAt(body, "tools")))
                 .providerOptions(Json.mapAt(body, "provider_options"))
-                .providerPreparedRequest(Json.mapAt(body, "request"))
+                .providerPreparedRequest(preparedRequest(Json.mapAt(body, "request")))
                 .promptVersionId(version == null ? null : Json.stringAt(version, "id"))
                 .promptVersionNumber(version == null ? null : Json.intAt(version, "number", null))
                 .source(source == null ? Source.REMOTE : Source.from(source))
@@ -189,7 +192,29 @@ final class ResolveClient {
         if (text != null) {
             builder.textTemplate(text);
         }
+        Decision decision = Decision.fromMap(Json.mapAt(body, "decision"));
+        if (decision != null) {
+            builder.decision(decision);
+        }
         return builder.build();
+    }
+
+    private UseCaseKind readPinnedKind(Map<String, Object> body, Map<String, Object> version) {
+        String value = version == null ? null : Json.stringAt(version, "kind");
+        if (value == null) {
+            value = Json.stringAt(body, "kind");
+        }
+        return value == null ? null : UseCaseKind.fromRequired(value);
+    }
+
+    private Map<String, Object> preparedRequest(Map<String, Object> request) {
+        if (request == null) {
+            return Map.of();
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(request);
+        Object method = out.get("method");
+        out.put("method", method instanceof String s ? s.toUpperCase(java.util.Locale.ROOT) : "POST");
+        return out;
     }
 
     private String readRevision(Map<String, Object> deployment) {

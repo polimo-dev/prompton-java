@@ -24,10 +24,10 @@ keeps working when PromptOn does not.
 
 ## Install
 
-Not published to Maven Central yet. Until it is, build it and install it into your local repository:
+Build the v0.6.1 GitHub source release and install it into your local Maven repository:
 
 ```sh
-git clone https://github.com/polimo-dev/prompton-java.git
+git clone --branch v0.6.1 --depth 1 https://github.com/polimo-dev/prompton-java.git
 cd prompton-java
 ./gradlew publishToMavenLocal
 ```
@@ -41,7 +41,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.polimo:prompton-sdk:0.6.0")
+    implementation("dev.polimo:prompton-sdk:0.6.1")
 }
 ```
 
@@ -49,13 +49,11 @@ dependencies {
 <dependency>
   <groupId>dev.polimo</groupId>
   <artifactId>prompton-sdk</artifactId>
-  <version>0.6.0</version>
+  <version>0.6.1</version>
 </dependency>
 ```
 
-Once it is on Maven Central the same coordinates will resolve without the local install. Check the
-registry rather than trusting this line: a `dev.polimo:prompton-sdk` published by anyone else is not
-this SDK.
+Keep `mavenLocal()` enabled so Gradle resolves the source-built artifact.
 
 ## Quick start
 
@@ -143,9 +141,10 @@ List<String> names = prompton.promptNames("support_reply");  // ["default", "ko"
 
 A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()`,
 `deploymentRevision()`, `prompt()`, `promptNames()`, `model()` (the provider string to send),
-`modelId()` (the catalog UUID), `provider()`, `params()`, `providerOptions()`,
-`promptVersionId()`, `promptVersionNumber()`, and the raw template as `messages()` (chat) or
-`textTemplate()` (text). An embedding prompt has neither.
+`modelId()` (the catalog UUID), `provider()`, `api()`, `requestPath()`, `params()`,
+`providerOptions()`, `promptVersionId()`, `promptVersionNumber()`, and the raw template as
+`messages()` (chat), `decision()` (Decision), or `textTemplate()` (text). An embedding prompt has
+none of those templates.
 
 Rendering is a separate step, because a prompt is reusable across calls and the variables are
 not:
@@ -153,6 +152,30 @@ not:
 ```java
 List<Message> messages = useCase.messages(Map.of("question", "why is the sky blue?"));
 String prompt = summarizeUseCase.text(Map.of("items", List.of("alpha", "beta")));
+```
+
+`request` prepares the provider request without sending it. Chat Completions bodies include the
+rendered messages, model, params, tools and OpenRouter routing options. Decision bodies include the
+rendered native `state` and `questions`, model, OpenRouter provider options, and the Decisions
+metadata fields `session_id`, `trace` and `user`.
+
+```java
+UseCase decision = prompton.useCase("sentiment");
+Map<String, Object> variables = Map.of("diary", diaryText);
+Decision inputDecision = decision.decision(variables);
+PreparedRequest prepared = decision.request(variables, RequestOptions.builder()
+        .sessionId(sessionId)
+        .trace(Map.of("request_id", requestId))
+        .user(endUserRef)
+        .build());
+
+Map<String, Object> raw = decision.track(TrackMeta.builder()
+        .variables(variables)
+        .inputDecision(inputDecision)
+        .build(), () -> {
+            Map<String, Object> response = openRouter.post(prepared.path(), prepared.body());
+            return ProviderResult.ok(response, Result.fromDecisions(response));
+        });
 ```
 
 For chat calls, PromptOn returns only the messages managed in the editor, usually the system and
@@ -166,11 +189,13 @@ List<Message> finalMessages = new ArrayList<>(managedMessages);
 finalMessages.addAll(loadConversationHistory(conversationId));
 finalMessages.add(Message.of("user", userText));
 
-MyReply reply = myProvider.chat(useCase.model(), finalMessages, useCase.params());
-useCase.track(TrackMeta.builder()
+MyReply reply = useCase.track(TrackMeta.builder()
         .variables(variables)
         .inputMessages(finalMessages)
-        .build(), () -> ProviderResult.ok(reply.text(), Result.ofContent(reply.text())));
+        .build(), () -> {
+            MyReply response = myProvider.chat(useCase.model(), finalMessages, useCase.params());
+            return ProviderResult.ok(response, Result.ofContent(response.text()));
+        });
 ```
 
 Prompts are Liquid, restricted to the subset PromptOn allows: `{{ var }}`, `for` (with `else`,
@@ -240,19 +265,19 @@ prompton.log(LogRecord.builder()
 |---|---|
 | `id` | UUIDv7, the idempotency key. The SDK issues one; a resend is counted as a duplicate, never stored twice |
 | `prompt_key`, `model`, `status`, `started_at` | Required. `status` is `ok` or `error`; `started_at` must be within 5 minutes ahead and 7 days behind |
-| `kind` | `chat`, `text` or `embedding` |
+| `kind` | `chat`, `decision`, `text` or `embedding` |
 | `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `UseCase`. Snapshot and response objects still expose internal ids such as `deploymentId()`, `promptVersionId()` and `modelId()` |
 | `source` | `remote`, `disk`, `bundle` or `manual` — which tier answered |
 | `provider`, `model_used`, `upstream_provider` | Who actually served the call |
 | `params` | What was sent. The server blanks it over 4 KB rather than rejecting the record |
-| `input` | `{variables, messages}` or `{text}` |
+| `input` | `{variables, messages}`, `{decision}` or `{text}` |
 | `output` | `{content, tool_calls}` |
 | `finish_reason`, `stop_kind` | `stop_kind` is `stop`, `length`, `tool_call`, `content_filter` or `other`, derived from the finish reason. Only `length` counts as truncated |
 | `error` | `{kind, status, message}` on a failure. `kind` is one of `http_4xx`, `http_5xx`, `rate_limited`, `timeout`, `transport`, `parse`, `app` |
 | `usage` | `{input_tokens, output_tokens, cost_usd, cost_source, raw}` |
 | `latency_ms`, `trace_id`, `sequence`, `end_user_ref` | How to find this call again |
 | `context`, `metadata` | Free-form. Keep `context` under 2 KB and `metadata` under 4 KB, or the record is rejected |
-| `sdk` | `{"name": "prompton-java", "version": "0.6.0"}` |
+| `sdk` | `{"name": "prompton-java", "version": "0.6.1"}` |
 
 Do not log secrets: no provider keys, no `PTN_API_KEY`, no user PII beyond `end_user_ref`.
 

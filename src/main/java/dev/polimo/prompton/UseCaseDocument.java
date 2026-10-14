@@ -26,7 +26,7 @@ public final class UseCaseDocument {
      *
      * @param id the prompt's UUID
      * @param key the stable key one call site is known by
-     * @param kind chat, text or embedding
+     * @param kind chat, decision, text or embedding
      * @param inputSchema the variables the prompt declares
      * @param defaultParams the params a deployment layers its own on top of
      * @param payloadPolicy how much of a call's text its monitoring logs may carry
@@ -46,6 +46,8 @@ public final class UseCaseDocument {
      * @param useCaseKey the prompt it pins
      * @param revision the UTC-date revision label, for example {@code v2026.09.30-1}
      * @param modelId the catalog UUID of the model it pins
+     * @param api provider API family, present in schema v6+
+     * @param requestPath origin-relative provider request path, present in schema v6+
      * @param params the params layered over the prompt's defaults
      * @param providerOptions the provider options layered over the model's
      * @param promptPins one pinned prompt version id per prompt name; empty for an embedding
@@ -55,6 +57,8 @@ public final class UseCaseDocument {
             String useCaseKey,
             String revision,
             String modelId,
+            String api,
+            String requestPath,
             Map<String, Object> params,
             Map<String, Object> providerOptions,
             Map<String, String> promptPins) {}
@@ -65,16 +69,20 @@ public final class UseCaseDocument {
      * @param id the version's UUID, which a deployment pins
      * @param promptId the prompt this is a version of
      * @param number the version number, counting up from 1
+     * @param kind immutable version kind, present in schema v6+
      * @param engine liquid or raw
      * @param messages the chat template, or {@code null} for a text version
+     * @param decision the Decision template, or {@code null} for another kind
      * @param textTemplate the text template, or {@code null} for a chat version
      */
     public record PromptVersion(
             String id,
             String promptId,
             Integer number,
+            UseCaseKind kind,
             Template.Engine engine,
             List<Message> messages,
+            Decision decision,
             Map<String, Object> tools,
             String textTemplate) {}
 
@@ -158,7 +166,8 @@ public final class UseCaseDocument {
         if (rawDeployments != null) {
             rawDeployments.forEach((key, value) -> {
                 if (value instanceof Map<?, ?> raw) {
-                    deployments.put(key, readDeployment(key, (Map<String, Object>) raw, warnings));
+                    deployments.put(key, readDeployment(
+                            key, (Map<String, Object>) raw, version, warnings));
                 } else {
                     warnings.add("invalid_deployment: " + key);
                 }
@@ -170,7 +179,7 @@ public final class UseCaseDocument {
         if (rawVersions != null) {
             rawVersions.forEach((id, value) -> {
                 if (value instanceof Map<?, ?> raw) {
-                    PromptVersion parsed = readPromptVersion(id, (Map<String, Object>) raw);
+                    PromptVersion parsed = readPromptVersion(id, (Map<String, Object>) raw, version);
                     promptVersions.put(parsed.id(), parsed);
                 } else {
                     warnings.add("invalid_prompt_version: " + id);
@@ -254,7 +263,7 @@ public final class UseCaseDocument {
     }
 
     private static Deployment readDeployment(
-            String key, Map<String, Object> raw, List<String> warnings) {
+            String key, Map<String, Object> raw, int schemaVersion, List<String> warnings) {
         Map<String, String> pins = new TreeMap<>();
         Map<String, Object> rawPins = Json.mapAt(raw, "template_pins");
         if (rawPins != null) {
@@ -274,6 +283,8 @@ public final class UseCaseDocument {
                 useCaseKey == null ? key : useCaseKey,
                 readRevision(raw, "revision"),
                 Json.stringAt(raw, "model_id"),
+                schemaVersion >= 6 ? Json.stringAt(raw, "api") : null,
+                schemaVersion >= 6 ? Json.stringAt(raw, "request_path") : null,
                 frozen(params),
                 frozen(providerOptions),
                 Collections.unmodifiableMap(pins));
@@ -291,7 +302,7 @@ public final class UseCaseDocument {
     }
 
     @SuppressWarnings("unchecked")
-    private static PromptVersion readPromptVersion(String id, Map<String, Object> raw) {
+    private static PromptVersion readPromptVersion(String id, Map<String, Object> raw, int schemaVersion) {
         List<Message> messages = null;
         List<Object> rawMessages = Json.listAt(raw, "messages");
         if (rawMessages != null) {
@@ -308,8 +319,12 @@ public final class UseCaseDocument {
                 versionId == null ? id : versionId,
                 Json.stringAt(raw, "prompt_id"),
                 Json.intAt(raw, "number", null),
+                schemaVersion >= 6 && Json.stringAt(raw, "kind") != null
+                        ? UseCaseKind.fromRequired(Json.stringAt(raw, "kind"))
+                        : null,
                 Template.Engine.from(Json.stringAt(raw, "engine")),
                 messages,
+                schemaVersion >= 6 ? Decision.fromMap(Json.mapAt(raw, "decision")) : null,
                 frozen(Json.mapAt(raw, "tools")),
                 Json.stringAt(raw, "text_template"));
     }

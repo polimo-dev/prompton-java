@@ -28,6 +28,9 @@ public final class UseCase {
     private final String model;
     private final String modelId;
     private final String provider;
+    private final String api;
+    private final String requestPath;
+    private final UseCaseKind pinnedKind;
     private final Map<String, Object> params;
     private final Map<String, Object> providerOptions;
     private final Map<String, Object> providerPreparedRequest;
@@ -36,6 +39,7 @@ public final class UseCase {
     private final Template.Engine engine;
     private final List<Message> messages;
     private final String textTemplate;
+    private final Decision decision;
     private final List<Map<String, Object>> inputSchema;
     private final PayloadPolicy payloadPolicy;
     private final Source source;
@@ -53,6 +57,9 @@ public final class UseCase {
         this.model = builder.model;
         this.modelId = builder.modelId;
         this.provider = builder.provider;
+        this.api = builder.api;
+        this.requestPath = builder.requestPath;
+        this.pinnedKind = builder.pinnedKind;
         this.params = frozen(builder.params);
         this.providerOptions = frozen(builder.providerOptions);
         this.providerPreparedRequest = frozen(builder.providerPreparedRequest);
@@ -61,6 +68,7 @@ public final class UseCase {
         this.engine = builder.engine;
         this.messages = builder.messages == null ? null : List.copyOf(builder.messages);
         this.textTemplate = builder.textTemplate;
+        this.decision = builder.decision;
         this.inputSchema = List.copyOf(builder.inputSchema);
         this.payloadPolicy = builder.payloadPolicy;
         this.source = builder.source;
@@ -125,6 +133,21 @@ public final class UseCase {
     /** Which provider to call: {@code openrouter}, {@code openai}, {@code anthropic}, … */
     public String provider() {
         return provider;
+    }
+
+    /** Provider API family, for example {@code chat_completions} or {@code decisions}. */
+    public String api() {
+        return api;
+    }
+
+    /** Origin-relative provider request path. */
+    public String requestPath() {
+        return requestPath;
+    }
+
+    /** Immutable pinned version kind, or {@code null} for legacy prompt documents. */
+    public UseCaseKind pinnedKind() {
+        return pinnedKind;
     }
 
     /** {@code use_case.default_params} with {@code deployment.params} layered on top. */
@@ -197,6 +220,37 @@ public final class UseCase {
         return Template.render(textTemplate, variables, engine);
     }
 
+    /** The raw Decision template, or {@code null} unless this is a Decision prompt. */
+    public Decision decision() {
+        return decision;
+    }
+
+    /**
+     * Renders this Decision prompt's native state and questions.
+     *
+     * @throws PromptOnException when this is not a Decision prompt
+     * @throws TemplateException when a required variable is missing
+     */
+    public Decision decision(Map<String, Object> variables) {
+        if (kind != UseCaseKind.DECISION || decision == null) {
+            throw new PromptOnException(
+                    "prompt " + key + " is of kind "
+                            + kind.wireName() + " and has no Decision template");
+        }
+        return ProviderRequests.renderDecision(decision, variables, engine);
+    }
+
+    /** Prepares the provider request for this prompt without sending it. */
+    public PreparedRequest request(Map<String, Object> variables) {
+        return request(variables, RequestOptions.empty());
+    }
+
+    /** Prepares the provider request for this prompt without sending it. */
+    public PreparedRequest request(Map<String, Object> variables, RequestOptions options) {
+        return ProviderRequests.prepare(this, variables == null ? Map.of() : variables,
+                options == null ? RequestOptions.empty() : options);
+    }
+
     /** The prompt's declared input variables. */
     public List<Map<String, Object>> inputSchema() {
         return inputSchema;
@@ -267,6 +321,9 @@ public final class UseCase {
         private String model;
         private String modelId;
         private String provider;
+        private String api;
+        private String requestPath;
+        private UseCaseKind pinnedKind;
         private Map<String, Object> params = Map.of();
         private Map<String, Object> providerOptions = Map.of();
         private Map<String, Object> providerPreparedRequest = Map.of();
@@ -275,6 +332,7 @@ public final class UseCase {
         private Template.Engine engine = Template.Engine.LIQUID;
         private List<Message> messages;
         private String textTemplate;
+        private Decision decision;
         private List<Map<String, Object>> inputSchema = List.of();
         private PayloadPolicy payloadPolicy = PayloadPolicy.DEFAULT;
         private Source source = Source.REMOTE;
@@ -294,6 +352,9 @@ public final class UseCase {
             this.model = source.model;
             this.modelId = source.modelId;
             this.provider = source.provider;
+            this.api = source.api;
+            this.requestPath = source.requestPath;
+            this.pinnedKind = source.pinnedKind;
             this.params = source.params;
             this.providerOptions = source.providerOptions;
             this.providerPreparedRequest = source.providerPreparedRequest;
@@ -302,6 +363,7 @@ public final class UseCase {
             this.engine = source.engine;
             this.messages = source.messages;
             this.textTemplate = source.textTemplate;
+            this.decision = source.decision;
             this.inputSchema = source.inputSchema;
             this.payloadPolicy = source.payloadPolicy;
             this.source = source.source;
@@ -368,6 +430,24 @@ public final class UseCase {
             return this;
         }
 
+        /** @param value provider API family */
+        public Builder api(String value) {
+            this.api = value;
+            return this;
+        }
+
+        /** @param value origin-relative provider request path */
+        public Builder requestPath(String value) {
+            this.requestPath = value;
+            return this;
+        }
+
+        /** @param value immutable pinned version kind */
+        public Builder pinnedKind(UseCaseKind value) {
+            this.pinnedKind = value;
+            return this;
+        }
+
         /** @param value the layered params */
         public Builder params(Map<String, Object> value) {
             this.params = value == null ? Map.of() : value;
@@ -413,6 +493,12 @@ public final class UseCase {
         /** @param value the raw text template */
         public Builder textTemplate(String value) {
             this.textTemplate = value;
+            return this;
+        }
+
+        /** @param value the raw Decision template */
+        public Builder decision(Decision value) {
+            this.decision = value;
             return this;
         }
 

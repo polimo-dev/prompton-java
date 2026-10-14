@@ -12,6 +12,7 @@ import java.util.Map;
  * <pre>
  * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved
  * version          = document.prompt_versions[deployment.template_pins[prompt or "default"]]
+ * kind             = version.kind || use_case.kind                      # schema v5 fallback
  * model            = document.models[deployment.model_id]
  * params           = use_case.default_params  &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
@@ -96,14 +97,20 @@ final class Resolver {
         }
         Map<String, Object> providerOptions = Params.merge(
                 model == null ? null : model.providerOptions(), deployment.providerOptions());
+        UseCaseKind runtimeKind = version == null || version.kind() == null
+                ? useCase.kind()
+                : version.kind();
 
         UseCase.Builder builder = new UseCase.Builder()
                 .key(useCaseKey)
-                .kind(useCase.kind())
+                .kind(runtimeKind)
                 .deploymentId(deployment.id())
                 .deploymentRevision(deployment.revision())
                 .prompt(selected)
                 .promptNames(promptNames)
+                .api(deployment.api())
+                .requestPath(deployment.requestPath())
+                .pinnedKind(version == null ? null : version.kind())
                 .params(params)
                 .providerOptions(providerOptions)
                 .inputSchema(useCase.inputSchema())
@@ -119,9 +126,11 @@ final class Resolver {
             builder.promptVersionId(version.id())
                     .promptVersionNumber(version.number())
                     .engine(version.engine());
-            if (useCase.kind() == UseCaseKind.CHAT) {
+            if (runtimeKind == UseCaseKind.CHAT) {
                 builder.messages(version.messages());
-            } else if (useCase.kind() == UseCaseKind.TEXT) {
+            } else if (runtimeKind == UseCaseKind.DECISION) {
+                builder.decision(version.decision());
+            } else if (runtimeKind == UseCaseKind.TEXT) {
                 builder.textTemplate(version.textTemplate());
             }
         }

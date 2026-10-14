@@ -17,6 +17,7 @@ public final class TrackMeta {
     private final Map<String, Object> variables;
     private final List<Message> inputMessages;
     private final String inputText;
+    private final Decision inputDecision;
     private final String endUserRef;
     private final String traceId;
     private final Integer sequence;
@@ -29,6 +30,7 @@ public final class TrackMeta {
         this.variables = b.variables;
         this.inputMessages = b.inputMessages;
         this.inputText = b.inputText;
+        this.inputDecision = b.inputDecision;
         this.endUserRef = b.endUserRef;
         this.traceId = b.traceId;
         this.sequence = b.sequence;
@@ -67,6 +69,11 @@ public final class TrackMeta {
         return inputText;
     }
 
+    /** The rendered native Decision state and questions sent to the provider. */
+    public Decision inputDecision() {
+        return inputDecision;
+    }
+
     /** A stable reference to the end user — never their email or name. */
     public String endUserRef() {
         return endUserRef;
@@ -103,6 +110,7 @@ public final class TrackMeta {
         private Map<String, Object> variables;
         private List<Message> inputMessages;
         private String inputText;
+        private Decision inputDecision;
         private String endUserRef;
         private String traceId;
         private Integer sequence;
@@ -133,6 +141,12 @@ public final class TrackMeta {
         /** @param value the final prompt text, for a text prompt */
         public Builder inputText(String value) {
             this.inputText = value;
+            return this;
+        }
+
+        /** @param value the rendered native Decision state and questions sent to the provider */
+        public Builder inputDecision(Decision value) {
+            this.inputDecision = value;
             return this;
         }
 

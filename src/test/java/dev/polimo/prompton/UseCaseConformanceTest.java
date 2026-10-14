@@ -69,6 +69,7 @@ class UseCaseConformanceTest {
                             useCase.messages(), variables, useCase.engine());
                     case TEXT -> Template.render(
                             useCase.textTemplate(), variables, useCase.engine());
+                    case DECISION -> useCase.decision(variables).toMap();
                     case EMBEDDING -> null;
                 };
             } catch (TemplateException e) {

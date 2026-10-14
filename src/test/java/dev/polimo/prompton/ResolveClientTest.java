@@ -29,6 +29,22 @@ class ResolveClientTest {
          "warnings":[],"etag":"sha256-v1","source":"disk"}
         """;
 
+    private static final String DECISION = """
+        {"key":"sentiment","kind":"decision",
+         "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d004","revision": "v2026.10.14-1"},
+         "template":"default","template_names":["default"],
+         "model_id":"0198f2a1-0000-7000-8000-00000000e003","model":"typesafe/jev-1.13",
+         "provider":"openrouter","api":"decisions","request_path":"/api/v1/systemone",
+         "params":{},"provider_options":{"allow_fallbacks":false},
+         "prompt_version":{"id":"0198f2a1-0000-7000-8000-00000000a004","number":1,"kind":"decision"},
+         "decision":{"state":{"diary":"Today was bright"},
+                     "questions":{"accept":{"type":"noul","instructions":"Accept?"}}},
+         "request":{"api":"decisions","method":"post","path":"/api/v1/systemone",
+                    "body":{"model":"typesafe/jev-1.13","state":{"diary":"Today was bright"},
+                            "questions":{"accept":{"type":"noul","instructions":"Accept?"}}}},
+         "warnings":[],"etag":"sha256-v1","source":"remote"}
+        """;
+
     private StubServer server;
 
     @BeforeEach
@@ -77,6 +93,32 @@ class ResolveClientTest {
                 assertEquals("Say hello to {{ name }}.", pin.messages().get(1).content());
             }
             assertEquals(1, calls.get(), "the answer is cached per prompt, prompt and environment");
+        }
+    }
+
+    @Test
+    void remoteDecisionRenderingKeepsNativeDecisionAndPreparedRequest() {
+        AtomicInteger calls = new AtomicInteger();
+        server.handle(request -> {
+            if (isPromptRequest(request)) {
+                calls.incrementAndGet();
+                return StubServer.Reply.ok(DECISION);
+            }
+            return StubServer.Reply.of(503, "{}");
+        });
+
+        try (PromptOn prompton = client()) {
+            UseCase first = prompton.useCaseRemote("sentiment", null, Map.of("diary", "Today was bright"));
+            assertEquals(UseCaseKind.DECISION, first.kind());
+            assertEquals("decisions", first.api());
+            assertEquals("/api/v1/systemone", first.requestPath());
+            assertEquals(Map.of("diary", "Today was bright"), first.decision().state());
+            assertEquals("decisions", first.providerPreparedRequest().get("api"));
+            assertEquals("/api/v1/systemone", first.providerPreparedRequest().get("path"));
+
+            UseCase second = prompton.useCaseRemote("sentiment", null, Map.of("diary", "Today was bright"));
+            assertEquals(first.providerPreparedRequest(), second.providerPreparedRequest());
+            assertEquals(2, calls.get(), "server rendering with variables is not cached");
         }
     }
 

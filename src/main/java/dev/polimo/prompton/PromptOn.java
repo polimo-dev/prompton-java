@@ -519,6 +519,9 @@ public final class PromptOn implements AutoCloseable {
         if (meta.inputText() != null) {
             input.put("text", meta.inputText());
         }
+        if (meta.inputDecision() != null) {
+            input.put("decision", meta.inputDecision().toMap());
+        }
         Map<String, Object> effectiveParams = meta.params() != null && useCase != null
                 ? Params.merge(useCase.params(), meta.params())
                 : meta.params() != null ? meta.params() : useCase == null ? null : useCase.params();

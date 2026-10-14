@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.1
+
+### Added
+
+- Native Decision prompt support: schema v6/v7 `kind: "decision"` parsing, local Decision
+  rendering, provider request preparation, remote render Decision/request preservation,
+  `TrackMeta.inputDecision`, and `Result.fromDecisions`.
+- Prepared provider requests through `UseCase.request(variables)` and
+  `UseCase.request(variables, options)` for Chat Completions and OpenRouter Decisions, including
+  explicit protocol/path validation.
+
 ## 0.6.0
 
 ### Changed
