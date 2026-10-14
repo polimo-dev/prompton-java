@@ -92,11 +92,11 @@ class LiveFixtureIT {
         String etag = first.header("etag");
         assertNotNull(etag, "the snapshot must carry an ETag to poll with");
 
-        UseCaseDocument snapshot = UseCaseDocument.parse(first.body());
-        assertEquals(UseCaseDocument.SCHEMA_VERSION, snapshot.schemaVersion());
+        PromptDocument snapshot = PromptDocument.parse(first.body());
+        assertEquals(PromptDocument.SCHEMA_VERSION, snapshot.schemaVersion());
         assertEquals("production", snapshot.environment());
         assertEquals(List.of(), snapshot.warnings());
-        assertTrue(snapshot.useCases().keySet().containsAll(List.of("greeting", "summarize", "embed")));
+        assertTrue(snapshot.prompts().keySet().containsAll(List.of("greeting", "summarize", "embed")));
 
         HttpResponse repoll = get(BASE + "/prompts?environment=production",
                 Map.of("if-none-match", etag));
@@ -105,15 +105,15 @@ class LiveFixtureIT {
     }
 
     @Test
-    void localUseCaseMatchesTheServerForTheDefaultPrompt() throws Exception {
+    void localPromptMatchesTheServerForTheDefaultPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            UseCase local = client.useCase("greeting");
+            Prompt local = client.prompt("greeting");
             List<Message> rendered = local.messages(Map.of("name", "Ada"));
 
             Map<String, Object> remote = Json.parseObject(post(BASE + "/prompts/greeting/render",
                     "{\"variables\":{\"name\":\"Ada\"}}").body());
 
-            assertUseCaseMatches(local, remote);
+            assertPromptMatches(local, remote);
             assertEquals(Json.canonical(Json.listAt(remote, "messages")),
                     Json.canonical(asMaps(rendered)),
                     "local rendering must produce exactly what the server produces");
@@ -121,50 +121,51 @@ class LiveFixtureIT {
     }
 
     @Test
-    void localUseCaseMatchesTheServerForANamedPrompt() throws Exception {
+    void localPromptMatchesTheServerForLanguageBranching() throws Exception {
         try (PromptOn client = prompton("production")) {
-            UseCase local = client.useCase("greeting", "ko");
-            List<Message> rendered = local.messages(Map.of("name", "Ada"));
+            Prompt local = client.prompt("greeting");
+            Map<String, Object> variables = Map.of("name", "Ada", "language", "ko");
+            List<Message> rendered = local.messages(variables);
 
             Map<String, Object> remote = Json.parseObject(post(BASE + "/prompts/greeting/render",
-                    "{\"prompt\":\"ko\",\"variables\":{\"name\":\"Ada\"}}")
+                    "{\"variables\":{\"name\":\"Ada\",\"language\":\"ko\"}}")
                     .body());
 
-            assertUseCaseMatches(local, remote);
-            assertEquals("ko", local.prompt());
+            assertPromptMatches(local, remote);
+            assertEquals("default", local.template());
             assertEquals(Json.canonical(Json.listAt(remote, "messages")),
                     Json.canonical(asMaps(rendered)));
         }
     }
 
     @Test
-    void localUseCaseMatchesTheServerForATextUseCase() throws Exception {
+    void localPromptMatchesTheServerForATextPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            UseCase local = client.useCase("summarize");
+            Prompt local = client.prompt("summarize");
             String rendered = local.text(Map.of("items", List.of("alpha", "beta")));
 
             Map<String, Object> remote = Json.parseObject(post(BASE + "/prompts/summarize/render",
                     "{\"variables\":{\"items\":[\"alpha\",\"beta\"]}}")
                     .body());
 
-            assertUseCaseMatches(local, remote);
-            assertEquals(UseCaseKind.TEXT, local.kind());
+            assertPromptMatches(local, remote);
+            assertEquals(PromptKind.TEXT, local.kind());
             assertEquals(Json.stringAt(remote, "text"), rendered);
         }
     }
 
     @Test
-    void anEmbeddingUseCaseResolvesToAModelAndNoPrompt() throws Exception {
+    void anEmbeddingPromptResolvesToAModelAndNoPrompt() throws Exception {
         try (PromptOn client = prompton("production")) {
-            UseCase local = client.useCase("embed");
+            Prompt local = client.prompt("embed");
             Map<String, Object> remote =
                     Json.parseObject(post(BASE + "/prompts/embed/render", "{}").body());
 
-            assertUseCaseMatches(local, remote);
-            assertEquals(UseCaseKind.EMBEDDING, local.kind());
-            assertEquals(null, local.prompt());
+            assertPromptMatches(local, remote);
+            assertEquals(PromptKind.EMBEDDING, local.kind());
+            assertEquals(null, local.template());
             assertEquals(null, local.promptVersionId());
-            assertEquals(List.of(), local.promptNames());
+            assertEquals(List.of(), local.templateNames());
         }
     }
 
@@ -172,13 +173,13 @@ class LiveFixtureIT {
     void aStagingSnapshotResolvesIndependentlyOfProduction() throws Exception {
         HttpResponse staging = get(BASE + "/prompts?environment=staging", Map.of());
         assertEquals(200, staging.status());
-        assertEquals("staging", UseCaseDocument.parse(staging.body()).environment());
+        assertEquals("staging", PromptDocument.parse(staging.body()).environment());
 
         try (PromptOn client = prompton("staging")) {
-            UseCase pin = client.useCase("greeting");
+            Prompt pin = client.prompt("greeting");
             assertNotNull(pin.model());
-            assertEquals("staging", client.useCaseDocumentInfo().environment());
-            assertEquals(Source.REMOTE, pin.source());
+            assertEquals("staging", client.promptDocumentInfo().environment());
+            assertEquals(PromptSource.REMOTE, pin.source());
         }
     }
 
@@ -186,22 +187,22 @@ class LiveFixtureIT {
     void theErrorCasesComeBackAsTheContractDescribes() throws Exception {
         assertEquals(404, get(BASE + "/prompts?environment=nope", Map.of()).status());
 
-        HttpResponse unknownUseCase = post(BASE + "/prompts/nope/render", "{}");
-        assertEquals(404, unknownUseCase.status());
-        assertEquals("not_found", errorCode(unknownUseCase));
-
-        HttpResponse unknownPrompt = post(BASE + "/prompts/greeting/render",
-                "{\"prompt\":\"fr\",\"variables\":{\"name\":\"Ada\"}}");
+        HttpResponse unknownPrompt = post(BASE + "/prompts/nope/render", "{}");
         assertEquals(404, unknownPrompt.status());
-        assertEquals("unknown_template", errorDetail(unknownPrompt, "reason"));
+        assertEquals("not_found", errorCode(unknownPrompt));
+
+        HttpResponse unknownTemplate = post(BASE + "/prompts/greeting/render",
+                "{\"template\":\"fr\",\"variables\":{\"name\":\"Ada\"}}");
+        assertEquals(400, unknownTemplate.status());
+        assertEquals("invalid_request", errorCode(unknownTemplate));
 
         HttpResponse missingVariable = post(BASE + "/prompts/greeting/render",
                 "{\"variables\":{}}");
         assertEquals(400, missingVariable.status());
         assertEquals("name", errorDetail(missingVariable, "missing_variable"));
 
-        HttpResponse missingUseCasePath = post(BASE + "/prompts/%20/render", "{}");
-        assertEquals(404, missingUseCasePath.status());
+        HttpResponse missingPromptPath = post(BASE + "/prompts/%20/render", "{}");
+        assertEquals(404, missingPromptPath.status());
 
         Map<String, String> wrongKey = new LinkedHashMap<>();
         wrongKey.put("accept", "application/json");
@@ -214,15 +215,15 @@ class LiveFixtureIT {
     @Test
     void theSdkRaisesTheSameErrorsLocallyThatTheServerReturns() {
         try (PromptOn client = prompton("production")) {
-            assertEquals(UseCaseException.Reason.UNKNOWN_USE_CASE,
-                    assertThrows(UseCaseException.class, () -> client.useCase("nope")).reason());
+            assertEquals(PromptException.Reason.UNKNOWN_PROMPT,
+                    assertThrows(PromptException.class, () -> client.prompt("nope")).reason());
 
-            UseCaseException unknownPrompt = assertThrows(UseCaseException.class,
-                    () -> client.useCase("greeting", "fr"));
-            assertEquals(UseCaseException.Reason.UNKNOWN_PROMPT, unknownPrompt.reason());
-            assertEquals(List.of("default", "ko"), unknownPrompt.promptNames());
+            PromptException unknownTemplate = assertThrows(PromptException.class,
+                    () -> client.prompt("greeting", "fr"));
+            assertEquals(PromptException.Reason.UNKNOWN_TEMPLATE, unknownTemplate.reason());
+            assertEquals(List.of("default", "ko"), unknownTemplate.templateNames());
 
-            UseCase pin = client.useCase("greeting");
+            Prompt pin = client.prompt("greeting");
             TemplateException missing = assertThrows(TemplateException.class,
                     () -> pin.messages(Map.of()));
             assertEquals("name", missing.variable());
@@ -252,7 +253,7 @@ class LiveFixtureIT {
     @Test
     void theSdkSendsAMonitoringLogEndToEnd() throws Exception {
         try (PromptOn client = prompton("production")) {
-            UseCase pin = client.useCase("greeting");
+            Prompt pin = client.prompt("greeting");
             List<Message> messages = pin.messages(Map.of("name", "Ada"));
 
             String answer = pin.track(TrackMeta.builder()
@@ -281,26 +282,26 @@ class LiveFixtureIT {
         try (PromptOn client = PromptOn.create(PromptOnConfig.builder()
                 .apiKey(KEY).host(HOST).environment("production")
                 .diskCachePath(cache).pollingEnabled(false).build())) {
-            assertEquals(Source.REMOTE, client.useCase("greeting").source());
+            assertEquals(PromptSource.REMOTE, client.prompt("greeting").source());
         }
         try (PromptOn offline = PromptOn.create(PromptOnConfig.builder()
                 .apiKey(KEY).host("http://127.0.0.1:1").environment("production")
                 .diskCachePath(cache).pollingEnabled(false)
                 .initialFetchTimeout(Duration.ofMillis(500))
                 .requestTimeout(Duration.ofMillis(300)).build())) {
-            UseCase pin = offline.useCase("greeting");
-            assertEquals(Source.DISK, pin.source());
+            Prompt pin = offline.prompt("greeting");
+            assertEquals(PromptSource.DISK, pin.source());
             assertFalse(pin.model().isBlank());
         }
     }
 
-    private static Map<String, Object> liveRecord(String useCase, String prompt) {
+    private static Map<String, Object> liveRecord(String promptKey, String template) {
         Map<String, Object> record = new LinkedHashMap<>();
         record.put("id", UuidV7.generate());
-        record.put("prompt_key", useCase);
+        record.put("prompt_key", promptKey);
         record.put("kind", "chat");
         record.put("model", "openai/gpt-4o-mini");
-        record.put("template", prompt);
+        record.put("template", template);
         record.put("provider", "openrouter");
         record.put("source", "remote");
         record.put("status", "ok");
@@ -313,14 +314,14 @@ class LiveFixtureIT {
         return record;
     }
 
-    private static void assertUseCaseMatches(UseCase local, Map<String, Object> remote) {
+    private static void assertPromptMatches(Prompt local, Map<String, Object> remote) {
         Map<String, Object> deployment = Json.mapAt(remote, "deployment");
         assertEquals(Json.stringAt(remote, "key"), local.key());
         assertEquals(Json.stringAt(remote, "kind"), local.kind().wireName());
         assertEquals(Json.stringAt(deployment, "id"), local.deploymentId());
         assertEquals(Json.stringAt(deployment, "revision"), local.deploymentRevision());
-        assertEquals(Json.stringAt(remote, "template"), local.prompt());
-        assertEquals(Json.listAt(remote, "template_names"), local.promptNames());
+        assertEquals(Json.stringAt(remote, "template"), local.template());
+        assertEquals(Json.listAt(remote, "template_names"), local.templateNames());
         assertEquals(Json.stringAt(remote, "model"), local.model());
         assertEquals(Json.stringAt(remote, "model_id"), local.modelId());
         assertEquals(Json.stringAt(remote, "provider"), local.provider());

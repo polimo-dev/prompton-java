@@ -14,11 +14,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** The {@code POST /prompts/{key}/render} path: its cache, and how it turns PromptOn's errors into exceptions. */
-class ResolveClientTest {
+class PromptRenderClientTest {
 
     private static final String GREETING = """
         {"key":"greeting","kind":"chat",
-         "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d001","revision": "v2026.09.30-3"},
+         "deployment":{"id":"0198f2a1-0000-7000-8000-00000000d001","revision":"v2026.09.30-3"},
          "template":"default","template_names":["default","ko"],
          "model_id":"0198f2a1-0000-7000-8000-00000000e001","model":"openai/gpt-4o-mini",
          "provider":"openrouter",
@@ -86,11 +86,11 @@ class ResolveClientTest {
         });
         try (PromptOn prompton = client()) {
             for (int i = 0; i < 5; i++) {
-                UseCase pin = prompton.useCaseRemote("greeting", null);
+                Prompt pin = prompton.promptRemote("greeting", null);
                 assertEquals("greeting", pin.key());
                 assertEquals("openai/gpt-4o-mini", pin.model());
-                assertEquals(Source.DISK, pin.source());
-                assertEquals(List.of("default", "ko"), pin.promptNames());
+                assertEquals(PromptSource.DISK, pin.source());
+                assertEquals(List.of("default", "ko"), pin.templateNames());
                 assertEquals("Say hello to {{ name }}.", pin.messages().get(1).content());
             }
             assertEquals(1, calls.get(), "the answer is cached per prompt, prompt and environment");
@@ -109,15 +109,15 @@ class ResolveClientTest {
         });
 
         try (PromptOn prompton = client()) {
-            UseCase first = prompton.useCaseRemote("sentiment", null, Map.of("diary", "Today was bright"));
-            assertEquals(UseCaseKind.DECISION, first.kind());
+            Prompt first = prompton.promptRemote("sentiment", null, Map.of("diary", "Today was bright"));
+            assertEquals(PromptKind.DECISION, first.kind());
             assertEquals("decisions", first.api());
             assertEquals("/api/v1/systemone", first.requestPath());
             assertEquals(Map.of("diary", "Today was bright"), first.decision().state());
             assertEquals("decisions", first.providerPreparedRequest().get("api"));
             assertEquals("/api/v1/systemone", first.providerPreparedRequest().get("path"));
 
-            UseCase second = prompton.useCaseRemote("sentiment", null, Map.of("diary", "Today was bright"));
+            Prompt second = prompton.promptRemote("sentiment", null, Map.of("diary", "Today was bright"));
             assertEquals(first.providerPreparedRequest(), second.providerPreparedRequest());
             assertEquals(2, calls.get(), "server rendering with variables is not cached");
         }
@@ -137,7 +137,7 @@ class ResolveClientTest {
              "warnings":[],"etag":"sha256-v8","source":"remote"}
             """));
         try (PromptOn prompton = client()) {
-            UseCase pin = prompton.useCaseRemote("greeting", null);
+            Prompt pin = prompton.promptRemote("greeting", null);
             assertNull(pin.deploymentId());
             assertNull(pin.modelId());
             assertNull(pin.promptVersionId());
@@ -162,14 +162,14 @@ class ResolveClientTest {
             return StubServer.Reply.of(503, "{}");
         });
         try (PromptOn prompton = shortCache()) {
-            assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+            assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             sleep(10);
-            assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+            assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             assertEquals(2, calls.get(), "the expired entry did go back to the server, and got a 429");
 
             for (int i = 0; i < 25; i++) {
                 sleep(2);
-                assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+                assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             }
             assertEquals(2, calls.get(),
                     "Retry-After: 60 was read, so no request may be made before it has elapsed");
@@ -189,15 +189,15 @@ class ResolveClientTest {
             return StubServer.Reply.of(503, "{}");
         });
         try (PromptOn prompton = shortCache()) {
-            assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+            assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             sleep(10);
-            assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+            assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             assertEquals(2, calls.get());
 
             server.close();
             for (int i = 0; i < 10; i++) {
                 sleep(2);
-                assertEquals("openai/gpt-4o-mini", prompton.useCaseRemote("greeting", null).model());
+                assertEquals("openai/gpt-4o-mini", prompton.promptRemote("greeting", null).model());
             }
             assertEquals(2, calls.get(), "a 5xx pauses the endpoint the same way a 429 does");
         }
@@ -209,9 +209,9 @@ class ResolveClientTest {
                         "{\"error\":{\"code\":\"rate_limited\",\"details\":{\"retry_after\":60}}}")
                 .withHeader("retry-after", "60"));
         try (PromptOn prompton = shortCache()) {
-            assertThrows(ApiException.class, () -> prompton.useCaseRemote("greeting", null));
+            assertThrows(ApiException.class, () -> prompton.promptRemote("greeting", null));
             PromptOnException second = assertThrows(PromptOnException.class,
-                    () -> prompton.useCaseRemote("greeting", null));
+                    () -> prompton.promptRemote("greeting", null));
             assertTrue(second.getMessage().contains("wait until"), second.getMessage());
             assertEquals(1, server.requests("/render").size(), "the pause holds with no cache too");
         }
@@ -239,7 +239,7 @@ class ResolveClientTest {
         });
         try (PromptOn prompton = client()) {
             for (int i = 0; i < 3; i++) {
-                UseCase pin = prompton.useCaseRemote("greeting", null, Map.of("name", "Ada"));
+                Prompt pin = prompton.promptRemote("greeting", null, Map.of("name", "Ada"));
                 assertEquals("Say hello to Ada.", pin.messages().get(1).content());
             }
             assertEquals(3, calls.get(), "a rendered answer depends on the variables, so it is not cached");
@@ -249,41 +249,41 @@ class ResolveClientTest {
     @Test
     void aNumericDeploymentRevisionFromTheServerIsInvalid() {
         server.handle(request -> StubServer.Reply.ok(GREETING.replace(
-                "\"revision\": \"v2026.09.30-3\"", "\"revision\": 3")));
+                "\"revision\":\"v2026.09.30-3\"", "\"revision\":3")));
         try (PromptOn prompton = client()) {
             PromptOnException e = assertThrows(PromptOnException.class,
-                    () -> prompton.useCaseRemote("greeting", null));
+                    () -> prompton.promptRemote("greeting", null));
             assertTrue(e.getMessage().contains("deployment revision must be a string"));
         }
     }
 
     @Test
-    void anUnknownPromptBecomesAUseCaseExceptionListingWhatIsPinned() {
+    void anUnknownPromptBecomesAPromptExceptionListingWhatIsPinned() {
         server.handle(request -> StubServer.Reply.of(404, """
             {"error":{"code":"not_found",
-             "message":"the live deployment pins no prompt named \\"fr\\"",
+             "message":"the live deployment pins no template named \\"fr\\"",
              "details":{"reason":"unknown_template","template":"fr","key":"greeting",
                         "template_names":["default","ko"]}}}
             """));
         try (PromptOn prompton = client()) {
-            UseCaseException e = assertThrows(UseCaseException.class,
-                    () -> prompton.useCaseRemote("greeting", "fr"));
-            assertEquals(UseCaseException.Reason.UNKNOWN_PROMPT, e.reason());
+            PromptException e = assertThrows(PromptException.class,
+                    () -> prompton.promptRemote("greeting", "fr"));
+            assertEquals(PromptException.Reason.UNKNOWN_TEMPLATE, e.reason());
             assertEquals("greeting", e.key());
-            assertEquals("fr", e.prompt());
-            assertEquals(List.of("default", "ko"), e.promptNames());
+            assertEquals("fr", e.template());
+            assertEquals(List.of("default", "ko"), e.templateNames());
         }
     }
 
     @Test
-    void anUnknownUseCaseErrorUsesTheCanonicalKeyDetail() {
+    void anUnknownPromptErrorUsesTheCanonicalKeyDetail() {
         server.handle(request -> StubServer.Reply.of(404,
                 "{\"error\":{\"code\":\"not_found\",\"message\":\"unknown prompt\","
                         + "\"details\":{\"reason\":\"unknown_prompt\",\"key\":\"nope\"}}}"));
         try (PromptOn prompton = client()) {
-            UseCaseException e = assertThrows(UseCaseException.class,
-                    () -> prompton.useCaseRemote("nope", null));
-            assertEquals(UseCaseException.Reason.UNKNOWN_USE_CASE, e.reason());
+            PromptException e = assertThrows(PromptException.class,
+                    () -> prompton.promptRemote("nope", null));
+            assertEquals(PromptException.Reason.UNKNOWN_PROMPT, e.reason());
             assertEquals("nope", e.key());
         }
     }
@@ -294,9 +294,9 @@ class ResolveClientTest {
                 "{\"error\":{\"code\":\"not_found\",\"message\":\"no live deployment\","
                         + "\"details\":{\"reason\":\"unresolved\"}}}"));
         try (PromptOn prompton = client()) {
-            UseCaseException e = assertThrows(UseCaseException.class,
-                    () -> prompton.useCaseRemote("draft", null));
-            assertEquals(UseCaseException.Reason.UNRESOLVED, e.reason());
+            PromptException e = assertThrows(PromptException.class,
+                    () -> prompton.promptRemote("draft", null));
+            assertEquals(PromptException.Reason.UNRESOLVED, e.reason());
             assertEquals("draft", e.key());
         }
     }
@@ -308,7 +308,7 @@ class ResolveClientTest {
                         + "\"details\":{\"missing_variable\":\"name\"}}}"));
         try (PromptOn prompton = client()) {
             TemplateException e = assertThrows(TemplateException.class,
-                    () -> prompton.useCaseRemote("greeting", null, Map.of()));
+                    () -> prompton.promptRemote("greeting", null, Map.of()));
             assertEquals(TemplateException.Kind.MISSING_VARIABLE, e.kind());
             assertEquals("name", e.variable());
         }
@@ -321,7 +321,7 @@ class ResolveClientTest {
                         + "\"details\":{}}}"));
         try (PromptOn prompton = client()) {
             ApiException e = assertThrows(ApiException.class,
-                    () -> prompton.useCaseRemote("greeting", null));
+                    () -> prompton.promptRemote("greeting", null));
             assertEquals(401, e.status());
             assertEquals("unauthorized", e.code());
         }

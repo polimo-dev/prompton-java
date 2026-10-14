@@ -68,7 +68,7 @@ Demand-driven config fetch release.
 
 ### Changed
 
-- Removed startup and idle config polling. `useCase(key)` now fetches only that prompt key when its cached value is stale or missing.
+- Removed startup and idle config polling. `prompt(key)` now fetches only that prompt key when its cached value is stale or missing.
 - Added per-project/environment/prompt in-memory cache entries with a 10-second freshness TTL and a separate 10-second attempt gate.
 - Added same-key single-flight config fetches, one-second total config-fetch deadline, no SDK retry, stale fallback after failures, and explicit cold-cache failure.
 - Switched runtime config lookup to `GET /api/v1/prompts/{key}?environment=...` with per-key ETag validation. Bulk `GET /prompts` remains outside the normal runtime path.
@@ -93,7 +93,7 @@ Patch release correcting the SDK wire contract to the current PromptOn API.
 
 - Fetch prompt documents from `GET /api/v1/prompts` and render through `POST /api/v1/prompts/{key}/render`.
 - Decode canonical prompt documents with `prompts` and `template_pins`, and exercise `conformance/prompt.json` in the resolver tests.
-- Send the render request field as `template` and read `template` / `template_names` from render responses while keeping legacy public `UseCase` method names.
+- Send the render request field as `template` and read `template` / `template_names` from render responses while keeping legacy public `Prompt` method names.
 
 ## 0.2.0
 
@@ -103,11 +103,11 @@ monitoring-log and server-filled prompt vocabulary without compatibility aliases
 ### Changed
 
 - Renamed the public local-loading API from resolution vocabulary to prompt vocabulary:
-  `resolve` / `resolveRemote` / `Resolution` / `ResolutionException` / `ResolutionSource` are now
-  `useCase` / `useCaseRemote` / `UseCase` / `UseCaseException` / `Source`.
-- Renamed the public prompt accessors from `useCase()` and `availablePrompts()` to `key()` and
-  `promptNames()`.
-- Renamed high-level rendering entrypoints to methods on `UseCase`: `messages(variables)` and
+  `resolve` / `resolveRemote` / `Resolution` / `ResolutionException` / `ResolutionPromptSource` are now
+  `prompt` / `promptRemote` / `Prompt` / `PromptException` / `PromptSource`.
+- Renamed the public prompt accessors from `prompt()` and `availablePrompts()` to `key()` and
+  `templateNames()`.
+- Renamed high-level rendering entrypoints to methods on `Prompt`: `messages(variables)` and
   `text(variables)`.
 - Renamed generation logging vocabulary to monitoring-log result vocabulary:
   `GenerationRecord` / `GenerationMeta` / `GenerationOutcome` / `GenerationUsage` /
@@ -115,8 +115,8 @@ monitoring-log and server-filled prompt vocabulary without compatibility aliases
   `withGeneration` is now `track`.
 - Renamed snapshot public document lifecycle vocabulary:
   `Snapshot` / `SnapshotInfo` / `snapshotInfo` / `exportSnapshot` / `putSnapshot` / `snapshot` are
-  now `UseCaseDocument` / `UseCaseDocumentInfo` / `useCaseDocumentInfo` /
-  `exportUseCaseDocument` / `putUseCaseDocument` / `useCaseDocument`.
+  now `PromptDocument` / `PromptDocumentInfo` / `promptDocumentInfo` /
+  `exportPromptDocument` / `putPromptDocument` / `promptDocument`.
 - Renamed `RefreshOutcome` to `RefreshResult`.
 - Updated the server-filled prompt route docs and client errors to `POST /prompts/{key}/render`;
   unknown-prompt errors and conformance fixtures now use `prompt_names`.
@@ -128,12 +128,12 @@ Initial release. The PromptOn SDK for Java 17+, reading snapshot schema version 
 
 ### Added
 
-- `PromptOn`, the client: `resolve`, `renderMessages`, `renderText`, `promptNames`,
+- `PromptOn`, the client: `resolve`, `renderMessages`, `renderText`, `templateNames`,
   `resolveRemote`, `log`, `flush`, `withGeneration`, `snapshotInfo`, `refresh`, `exportSnapshot`,
   `putSnapshot`, `logStats`, `capturedLogs`.
 - Local resolution (`Resolver`, `Resolution`, `Snapshot`) exactly as the runtime contract defines
   it: deployment to version to model, params and provider options layered shallowly, and
-  `unknown_use_case` / `unresolved` / `unknown_prompt` errors with no silent fall back to the
+  `unknown_prompt` / `unresolved` / `unknown_prompt` errors with no silent fall back to the
   `default` prompt.
 - `Template`, the Liquid subset PromptOn allows — `for`, `if`/`elsif`/`else`, `unless`, `assign`,
   `break`, `continue`, the filters `size`, `join` and `default`, and a `raw` passthrough — plus

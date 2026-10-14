@@ -67,18 +67,18 @@ class ConcurrencyTest {
                 .cacheTtl(Duration.ofMillis(20))
                 .logFlushInterval(Duration.ofMillis(20))
                 .build())) {
-            prompton.useCase("greeting");
+            prompton.prompt("greeting");
             for (int t = 0; t < threads; t++) {
                 pool.execute(() -> {
                     try {
                         start.await();
                         for (int i = 0; i < perThread; i++) {
-                            UseCase pin = prompton.useCase("greeting", i % 2 == 0 ? null : "default");
+                            Prompt pin = prompton.prompt("greeting", i % 2 == 0 ? null : "default");
                             List<Message> messages =
                                     pin.messages(Map.of("name", "Ada"));
                             assertEquals(2, messages.size());
                             prompton.log(LogRecord.builder()
-                                    .useCase(pin)
+                                    .prompt(pin)
                                     .status(LogRecord.Status.OK)
                                     .startedAt(Instant.now())
                                     .latencyMs(1L)
@@ -121,12 +121,12 @@ class ConcurrencyTest {
                 .project("sdkfixture").diskCacheEnabled(false)
                 .pollingEnabled(false).cacheTtl(Duration.ofMillis(10))
                 .requestTimeout(Duration.ofSeconds(5)).build())) {
-            prompton.useCase("greeting");
+            prompton.prompt("greeting");
             clock.updateAndGet(now -> now.plusMillis(10_100));
 
             long startedAt = System.nanoTime();
             for (int i = 0; i < 200; i++) {
-                assertNotNull(prompton.useCase("greeting").model());
+                assertNotNull(prompton.prompt("greeting").model());
             }
             long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000L;
             assertTrue(elapsedMillis < 1_300,
@@ -167,7 +167,7 @@ class ConcurrencyTest {
                         for (int i = 0; i < 100; i++) {
                             DiskCache.Stored stored = DiskCache.read(path);
                             if (stored != null) {
-                                assertEquals("production", UseCaseDocument.parse(stored.body()).environment());
+                                assertEquals("production", PromptDocument.parse(stored.body()).environment());
                                 reads.incrementAndGet();
                             }
                         }

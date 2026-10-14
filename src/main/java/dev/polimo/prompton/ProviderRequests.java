@@ -19,17 +19,17 @@ final class ProviderRequests {
     private ProviderRequests() {}
 
     static PreparedRequest prepare(
-            UseCase useCase, Map<String, Object> variables, RequestOptions options) {
-        String api = expectApi(useCase);
-        String path = expectPath(useCase);
+            Prompt prompt, Map<String, Object> variables, RequestOptions options) {
+        String api = expectApi(prompt);
+        String path = expectPath(prompt);
         if ("chat_completions".equals(api)) {
-            return prepareChat(useCase, variables, options, api, path);
+            return prepareChat(prompt, variables, options, api, path);
         }
         if ("decisions".equals(api)) {
-            return prepareDecision(useCase, variables, options, api, path);
+            return prepareDecision(prompt, variables, options, api, path);
         }
         throw new PromptOnException(
-                "prompt " + useCase.key() + " uses unsupported deployment api " + useCase.api());
+                "prompt " + prompt.key() + " uses unsupported deployment api " + prompt.api());
     }
 
     static Decision renderDecision(
@@ -44,7 +44,7 @@ final class ProviderRequests {
     }
 
     private static PreparedRequest prepareChat(
-            UseCase useCase,
+            Prompt prompt,
             Map<String, Object> variables,
             RequestOptions options,
             String api,
@@ -52,18 +52,18 @@ final class ProviderRequests {
         if (options.sessionId() != null || options.trace() != null || options.user() != null) {
             throw new PromptOnException("Decisions metadata options require the Decisions API");
         }
-        if (useCase.kind() != UseCaseKind.CHAT || useCase.messages() == null) {
-            throw new PromptOnException("prompt " + useCase.key() + " has no chat template");
+        if (prompt.kind() != PromptKind.CHAT || prompt.messages() == null) {
+            throw new PromptOnException("prompt " + prompt.key() + " has no chat template");
         }
-        List<Message> rendered = useCase.messages(variables);
-        Map<String, Object> canonical = toolFields(useCase.params());
-        Map<String, Object> params = requestParams(useCase.params(), options.params(), "chat", canonical);
+        List<Message> rendered = prompt.messages(variables);
+        Map<String, Object> canonical = toolFields(prompt.params());
+        Map<String, Object> params = requestParams(prompt.params(), options.params(), "chat", canonical);
         Map<String, Object> provider = providerOptions(
-                Params.merge(useCase.providerOptions(), options.providerOptions()));
-        rejectProviderOptionsForNonOpenRouter(useCase, provider);
+                Params.merge(prompt.providerOptions(), options.providerOptions()));
+        rejectProviderOptionsForNonOpenRouter(prompt, provider);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", expectModel(useCase));
+        body.put("model", expectModel(prompt));
         List<Object> messages = new ArrayList<>(rendered.size());
         for (Message message : rendered) {
             messages.add(message.toMap());
@@ -71,7 +71,7 @@ final class ProviderRequests {
         body.put("messages", messages);
         body.putAll(params);
         body.putAll(canonical);
-        if ("openrouter".equals(useCase.provider())) {
+        if ("openrouter".equals(prompt.provider())) {
             body.put("usage", Map.of("include", true));
         }
         if (!provider.isEmpty()) {
@@ -81,22 +81,22 @@ final class ProviderRequests {
     }
 
     private static PreparedRequest prepareDecision(
-            UseCase useCase,
+            Prompt prompt,
             Map<String, Object> variables,
             RequestOptions options,
             String api,
             String path) {
-        if (useCase.kind() != UseCaseKind.DECISION || useCase.decision() == null) {
-            throw new PromptOnException("prompt " + useCase.key() + " has no Decision template");
+        if (prompt.kind() != PromptKind.DECISION || prompt.decision() == null) {
+            throw new PromptOnException("prompt " + prompt.key() + " has no Decision template");
         }
-        Map<String, Object> params = decisionParams(useCase.params(), options.params());
-        Decision decision = renderDecision(useCase.decision(), variables, useCase.engine());
+        Map<String, Object> params = decisionParams(prompt.params(), options.params());
+        Decision decision = renderDecision(prompt.decision(), variables, prompt.engine());
         Map<String, Object> provider = providerOptions(
-                Params.merge(useCase.providerOptions(), options.providerOptions()));
-        rejectProviderOptionsForNonOpenRouter(useCase, provider);
+                Params.merge(prompt.providerOptions(), options.providerOptions()));
+        rejectProviderOptionsForNonOpenRouter(prompt, provider);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", expectModel(useCase));
+        body.put("model", expectModel(prompt));
         body.put("state", decision.state());
         body.put("questions", decision.questions());
         body.putAll(params);
@@ -109,51 +109,51 @@ final class ProviderRequests {
         return new PreparedRequest(api, "POST", path, body);
     }
 
-    private static String expectApi(UseCase useCase) {
-        if (useCase.pinnedKind() == null) {
-            throw new PromptOnException("prompt " + useCase.key()
+    private static String expectApi(Prompt prompt) {
+        if (prompt.pinnedKind() == null) {
+            throw new PromptOnException("prompt " + prompt.key()
                     + " cannot prepare a provider request because its pinned prompt version"
                     + " has no kind metadata");
         }
-        if (!"chat_completions".equals(useCase.api()) && !"decisions".equals(useCase.api())) {
-            throw new PromptOnException("prompt " + useCase.key()
+        if (!"chat_completions".equals(prompt.api()) && !"decisions".equals(prompt.api())) {
+            throw new PromptOnException("prompt " + prompt.key()
                     + " cannot prepare a provider request because its deployment has no"
                     + " supported api metadata");
         }
-        if ("chat_completions".equals(useCase.api()) && useCase.pinnedKind() != UseCaseKind.CHAT) {
-            throw new PromptOnException("prompt " + useCase.key()
+        if ("chat_completions".equals(prompt.api()) && prompt.pinnedKind() != PromptKind.CHAT) {
+            throw new PromptOnException("prompt " + prompt.key()
                     + " has deployment api chat_completions but pinned version kind "
-                    + useCase.pinnedKind().wireName());
+                    + prompt.pinnedKind().wireName());
         }
-        if ("decisions".equals(useCase.api()) && useCase.pinnedKind() != UseCaseKind.DECISION) {
-            throw new PromptOnException("prompt " + useCase.key()
+        if ("decisions".equals(prompt.api()) && prompt.pinnedKind() != PromptKind.DECISION) {
+            throw new PromptOnException("prompt " + prompt.key()
                     + " has deployment api decisions but pinned version kind "
-                    + useCase.pinnedKind().wireName());
+                    + prompt.pinnedKind().wireName());
         }
-        return useCase.api();
+        return prompt.api();
     }
 
-    private static String expectPath(UseCase useCase) {
-        String path = useCase.requestPath();
+    private static String expectPath(Prompt prompt) {
+        String path = prompt.requestPath();
         if (path == null || path.isBlank()) {
-            throw new PromptOnException("prompt " + useCase.key()
+            throw new PromptOnException("prompt " + prompt.key()
                     + " cannot prepare a provider request because its deployment has no"
                     + " request_path metadata");
         }
         if (!path.startsWith("/") || path.startsWith("//") || path.matches("(?i)^[a-z][a-z0-9+.-]*:.*")) {
-            throw new PromptOnException("prompt " + useCase.key() + " has invalid request_path "
+            throw new PromptOnException("prompt " + prompt.key() + " has invalid request_path "
                     + path + "; expected an origin-relative path");
         }
-        List<String> expected = expectedPaths(useCase.provider(), useCase.api());
+        List<String> expected = expectedPaths(prompt.provider(), prompt.api());
         if (expected.isEmpty()) {
-            throw new PromptOnException("prompt " + useCase.key()
-                    + " cannot prepare a provider request for provider " + useCase.provider()
-                    + " and api " + useCase.api());
+            throw new PromptOnException("prompt " + prompt.key()
+                    + " cannot prepare a provider request for provider " + prompt.provider()
+                    + " and api " + prompt.api());
         }
         if (!expected.contains(path)) {
-            throw new PromptOnException("prompt " + useCase.key() + " has request_path " + path
+            throw new PromptOnException("prompt " + prompt.key() + " has request_path " + path
                     + ", expected " + String.join(" or ", expected) + " for provider "
-                    + useCase.provider() + " and api " + useCase.api());
+                    + prompt.provider() + " and api " + prompt.api());
         }
         return path;
     }
@@ -174,12 +174,12 @@ final class ProviderRequests {
         return List.of();
     }
 
-    private static String expectModel(UseCase useCase) {
-        if (useCase.model() == null || useCase.model().isBlank()) {
-            throw new PromptOnException("prompt " + useCase.key()
+    private static String expectModel(Prompt prompt) {
+        if (prompt.model() == null || prompt.model().isBlank()) {
+            throw new PromptOnException("prompt " + prompt.key()
                     + " cannot prepare a provider request because its deployment model is missing");
         }
-        return useCase.model();
+        return prompt.model();
     }
 
     private static Map<String, Object> requestParams(
@@ -275,11 +275,11 @@ final class ProviderRequests {
     }
 
     private static void rejectProviderOptionsForNonOpenRouter(
-            UseCase useCase, Map<String, Object> provider) {
-        if ("openrouter".equals(useCase.provider()) || provider.isEmpty()) {
+            Prompt prompt, Map<String, Object> provider) {
+        if ("openrouter".equals(prompt.provider()) || provider.isEmpty()) {
             return;
         }
-        throw new PromptOnException("prompt " + useCase.key()
+        throw new PromptOnException("prompt " + prompt.key()
                 + " has provider options, but provider options are only supported"
                 + " for OpenRouter requests");
     }

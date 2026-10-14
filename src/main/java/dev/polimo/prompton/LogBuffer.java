@@ -202,7 +202,7 @@ final class LogBuffer implements AutoCloseable {
         }
     }
 
-    /** UseCaseDocument of the queue and its counters. */
+    /** PromptDocument of the queue and its counters. */
     LogStats stats() {
         synchronized (lock) {
             return new LogStats(remaining(), queuedBytes, sent.get(), droppedFull.get(),

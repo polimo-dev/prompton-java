@@ -22,12 +22,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <pre>{@code
  * try (PromptOn prompton = PromptOn.create()) {
- *     UseCase useCase = prompton.useCase("support_reply");
- *     List<Message> messages = useCase.messages(Map.of("question", question));
- *     String answer = useCase.track(TrackMeta.builder()
+ *     Prompt prompt = prompton.prompt("support_reply");
+ *     List<Message> messages = prompt.messages(Map.of("question", question));
+ *     String answer = prompt.track(TrackMeta.builder()
  *             .inputMessages(messages).variables(Map.of("question", question)).build(),
  *         () -> {
- *             MyReply reply = myProvider.chat(useCase.model(), messages, useCase.params());
+ *             MyReply reply = myProvider.chat(prompt.model(), messages, prompt.params());
  *             return ProviderResult.ok(reply.text(), Result.builder()
  *                     .content(reply.text()).finishReason(reply.finishReason()).build());
  *         });
@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }</pre>
  *
  * <p>PromptOn is never in the request path: the provider call above is yours, with your key and
- * your HTTP client. {@link #useCase(String)} fetches only the requested prompt when the in-memory
+ * your HTTP client. {@link #prompt(String)} fetches only the requested prompt when the in-memory
  * value is stale or missing, with a one-second budget and stale fallback, backed by disk or a file
  * you can ship inside the application — so if PromptOn is unreachable your app keeps generating on
  * the last configuration it saw.
@@ -53,7 +53,7 @@ public final class PromptOn implements AutoCloseable {
 
     private final PromptOnConfig config;
     private final SnapshotStore snapshots;
-    private final ResolveClient resolveClient;
+    private final PromptRenderClient resolveClient;
     private final LogBuffer buffer;
     private final List<Map<String, Object>> capturedLogs = new CopyOnWriteArrayList<>();
     private final List<Map<String, Object>> capturedEvents = new CopyOnWriteArrayList<>();
@@ -61,7 +61,7 @@ public final class PromptOn implements AutoCloseable {
     private PromptOn(PromptOnConfig config) {
         this.config = config;
         this.snapshots = new SnapshotStore(config);
-        this.resolveClient = new ResolveClient(config);
+        this.resolveClient = new PromptRenderClient(config);
         this.buffer = config.mode() == Mode.TEST ? null : new LogBuffer(config);
         this.snapshots.start();
     }
@@ -90,8 +90,8 @@ public final class PromptOn implements AutoCloseable {
     // prompts
 
     /** The prompt with its {@code default} prompt. */
-    public UseCase useCase(String useCase) {
-        return useCase(useCase, null);
+    public Prompt prompt(String promptKey) {
+        return prompt(promptKey, null);
     }
 
     /**
@@ -101,55 +101,55 @@ public final class PromptOn implements AutoCloseable {
      * this performs one {@code GET /prompts/:key} attempt for that key and waits up to one second
      * before falling back to the last valid value.
      *
-     * @param useCase the prompt key
-     * @param promptName the prompt name, or {@code null} for {@code default}
+     * @param promptKey the prompt key
+     * @param templateName the template name, or {@code null} for {@code default}
      * @return what to send to the provider
-     * @throws UseCaseException when the prompt, its deployment or that prompt name is not in
+     * @throws PromptException when the prompt, its deployment or that template name is not in
      *     the prompt document, or when nothing is cached and PromptOn is unreachable
      */
-    public UseCase useCase(String useCase, String promptName) {
-        SnapshotStore.Entry entry = snapshots.require(useCase);
+    public Prompt prompt(String promptKey, String templateName) {
+        SnapshotStore.Entry entry = snapshots.require(promptKey);
         return Resolver.resolve(
-                entry.useCaseDocument(), useCase, promptName, entry.source(), entry.etag())
+                entry.promptDocument(), promptKey, templateName, entry.source(), entry.etag())
                 .attachTo(this);
     }
 
-    /** Every prompt name the live deployment of {@code useCase} pins, sorted. */
-    public List<String> promptNames(String useCase) {
-        return snapshots.require(useCase).useCaseDocument().promptNames(useCase);
+    /** Every template name the live deployment of {@code promptKey} pins, sorted. */
+    public List<String> templateNames(String promptKey) {
+        return snapshots.require(promptKey).promptDocument().templateNames(promptKey);
     }
 
     /**
      * Resolves on the server with {@code POST /prompts/{key}/render}, returning the raw templates.
      *
      * <p>The answer is cached for the prompt document TTL per prompt, prompt and environment; render it
-     * locally with {@link UseCase#messages(Map)} or {@link UseCase#text(Map)}. Use it as a smoke
+     * locally with {@link Prompt#messages(Map)} or {@link Prompt#text(Map)}. Use it as a smoke
      * test or on a cold, low-traffic path,
      * never once per request in a hot loop.
      *
-     * @param useCase the prompt key
-     * @param promptName the prompt name, or {@code null} for {@code default}
+     * @param promptKey the prompt key
+     * @param templateName the template name, or {@code null} for {@code default}
      * @return the prompt as the server rendered it
      */
-    public UseCase useCaseRemote(String useCase, String promptName) {
-        return resolveClient.resolve(useCase, promptName, null).attachTo(this);
+    public Prompt promptRemote(String promptKey, String templateName) {
+        return resolveClient.resolve(promptKey, templateName, null).attachTo(this);
     }
 
     /**
      * Resolves and renders on the server in one round trip.
      *
      * <p>Not cached, because the answer depends on the variables. The returned prompt's
-     * {@link UseCase#messages()} and {@link UseCase#textTemplate()} are already rendered.
+     * {@link Prompt#messages()} and {@link Prompt#textTemplate()} are already rendered.
      *
-     * @param useCase the prompt key
-     * @param promptName the prompt name, or {@code null} for {@code default}
+     * @param promptKey the prompt key
+     * @param templateName the template name, or {@code null} for {@code default}
      * @param variables the values the template reads
      * @return the prompt, with its prompt rendered
      */
-    public UseCase useCaseRemote(
-            String useCase, String promptName, Map<String, Object> variables) {
+    public Prompt promptRemote(
+            String promptKey, String templateName, Map<String, Object> variables) {
         return resolveClient.resolve(
-                useCase, promptName, variables == null ? Map.of() : variables)
+                promptKey, templateName, variables == null ? Map.of() : variables)
                 .attachTo(this);
     }
 
@@ -412,14 +412,14 @@ public final class PromptOn implements AutoCloseable {
      * as {@code status: "error"} with {@code error.kind: "app"} and then rethrown unchanged, so the
      * wrapper never swallows a failure or changes control flow.
      *
-     * @param useCase the prompt this call used
+     * @param prompt the prompt this call used
      * @param meta what went in, and how to find this call again later
      * @param call your provider call
      * @param <T> whatever your own code wants back
      * @return {@link ProviderResult#value()}
      * @throws Exception whatever your call threw
      */
-    <T> T track(UseCase useCase, TrackMeta meta, ProviderCall<T> call)
+    <T> T track(Prompt prompt, TrackMeta meta, ProviderCall<T> call)
             throws Exception {
         TrackMeta safeMeta = meta == null ? TrackMeta.empty() : meta;
         String id = safeMeta.id() == null ? UuidV7.generate() : safeMeta.id();
@@ -428,13 +428,13 @@ public final class PromptOn implements AutoCloseable {
         try {
             ProviderResult<T> result = call.call();
             long latency = elapsedMillis(start);
-            log(buildRecord(useCase, safeMeta, id, startedAt, latency,
+            log(buildRecord(prompt, safeMeta, id, startedAt, latency,
                     result.failed() ? LogRecord.Status.ERROR : LogRecord.Status.OK,
                     result.result(), result.error()));
             return result.value();
         } catch (Exception | Error e) {
             long latency = elapsedMillis(start);
-            log(buildRecord(useCase, safeMeta, id, startedAt, latency,
+            log(buildRecord(prompt, safeMeta, id, startedAt, latency,
                     LogRecord.Status.ERROR, null,
                     LogError.of(ErrorKind.APP, describe(e))));
             throw e;
@@ -442,18 +442,18 @@ public final class PromptOn implements AutoCloseable {
     }
 
     /**
-     * {@link #track(UseCase, TrackMeta, ProviderCall)} for a call that throws no checked exception.
+     * {@link #track(Prompt, TrackMeta, ProviderCall)} for a call that throws no checked exception.
      *
-     * @param useCase the prompt this call used
+     * @param prompt the prompt this call used
      * @param meta what went in, and how to find this call again later
      * @param call your provider call
      * @param <T> whatever your own code wants back
      * @return {@link ProviderResult#value()}
      */
     <T> T trackUnchecked(
-            UseCase useCase, TrackMeta meta, UncheckedProviderCall<T> call) {
+            Prompt prompt, TrackMeta meta, UncheckedProviderCall<T> call) {
         try {
-            return track(useCase, meta, call::call);
+            return track(prompt, meta, call::call);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -478,7 +478,7 @@ public final class PromptOn implements AutoCloseable {
     }
 
     private LogRecord buildRecord(
-            UseCase useCase,
+            Prompt prompt,
             TrackMeta meta,
             String id,
             Instant startedAt,
@@ -487,7 +487,7 @@ public final class PromptOn implements AutoCloseable {
             Result result,
             LogError error) {
         LogRecord.Builder builder = LogRecord.builder()
-                .useCase(useCase)
+                .prompt(prompt)
                 .id(id)
                 .status(status)
                 .startedAt(startedAt)
@@ -499,8 +499,8 @@ public final class PromptOn implements AutoCloseable {
                 .environment(config.environment())
                 .sdk(sdkIdentity());
 
-        if (meta.params() != null && useCase != null) {
-            builder.params(Params.merge(useCase.params(), meta.params()));
+        if (meta.params() != null && prompt != null) {
+            builder.params(Params.merge(prompt.params(), meta.params()));
         } else if (meta.params() != null) {
             builder.params(meta.params());
         }
@@ -522,9 +522,9 @@ public final class PromptOn implements AutoCloseable {
         if (meta.inputDecision() != null) {
             input.put("decision", meta.inputDecision().toMap());
         }
-        Map<String, Object> effectiveParams = meta.params() != null && useCase != null
-                ? Params.merge(useCase.params(), meta.params())
-                : meta.params() != null ? meta.params() : useCase == null ? null : useCase.params();
+        Map<String, Object> effectiveParams = meta.params() != null && prompt != null
+                ? Params.merge(prompt.params(), meta.params())
+                : meta.params() != null ? meta.params() : prompt == null ? null : prompt.params();
         addToolInputFields(input, effectiveParams);
         if (!input.isEmpty()) {
             builder.input(input);
@@ -568,12 +568,12 @@ public final class PromptOn implements AutoCloseable {
         return sdk;
     }
 
-    private PayloadPolicy policyFor(String useCase) {
-        SnapshotStore.Entry entry = snapshots.currentFor(useCase);
-        if (entry == null || useCase == null) {
+    private PayloadPolicy policyFor(String promptKey) {
+        SnapshotStore.Entry entry = snapshots.currentFor(promptKey);
+        if (entry == null || promptKey == null) {
             return config.payloadDefaults();
         }
-        UseCaseDocument.UseCase found = entry.useCaseDocument().useCases().get(useCase);
+        PromptDocument.Prompt found = entry.promptDocument().prompts().get(promptKey);
         return found == null || found.payloadPolicy() == null
                 ? config.payloadDefaults()
                 : found.payloadPolicy();
@@ -583,13 +583,13 @@ public final class PromptOn implements AutoCloseable {
     // prompt document control
 
     /** Where the configuration in memory came from and how old it is. */
-    public UseCaseDocumentInfo useCaseDocumentInfo() {
+    public PromptDocumentInfo promptDocumentInfo() {
         return snapshots.info();
     }
 
     /**
      * Compatibility method from the bulk-refresh era. Runtime config is fetched on demand by
-     * {@link #useCase(String)}, so this never performs a bulk remote request.
+     * {@link #prompt(String)}, so this never performs a bulk remote request.
      *
      * @return {@link RefreshResult#SKIPPED}
      */
@@ -605,18 +605,18 @@ public final class PromptOn implements AutoCloseable {
      *
      * @param path where to write it
      */
-    public void exportUseCaseDocument(Path path) {
+    public void exportPromptDocument(Path path) {
         snapshots.exportTo(path);
     }
 
-    /** Installs a prompt document the application supplied, as {@link Source#MANUAL}. */
-    public void putUseCaseDocument(String json) {
-        snapshots.put(UseCaseDocument.parse(json), Source.MANUAL, json);
+    /** Installs a prompt document the application supplied, as {@link PromptSource#MANUAL}. */
+    public void putPromptDocument(String json) {
+        snapshots.put(PromptDocument.parse(json), PromptSource.MANUAL, json);
     }
 
-    /** Installs an already-parsed prompt document, as {@link Source#MANUAL}. */
-    public void putUseCaseDocument(UseCaseDocument document) {
-        snapshots.put(document, Source.MANUAL, null);
+    /** Installs an already-parsed prompt document, as {@link PromptSource#MANUAL}. */
+    public void putPromptDocument(PromptDocument document) {
+        snapshots.put(document, PromptSource.MANUAL, null);
     }
 
     /**
@@ -626,14 +626,14 @@ public final class PromptOn implements AutoCloseable {
      * @param document the document to install
      * @param source what reads against it report
      */
-    public void putUseCaseDocument(UseCaseDocument document, Source source) {
+    public void putPromptDocument(PromptDocument document, PromptSource source) {
         snapshots.put(document, source, null);
     }
 
     /** The prompt document in memory, or {@code null} when nothing has been loaded. */
-    public UseCaseDocument useCaseDocument() {
+    public PromptDocument promptDocument() {
         SnapshotStore.Entry entry = snapshots.current();
-        return entry == null ? null : entry.useCaseDocument();
+        return entry == null ? null : entry.promptDocument();
     }
 
     // ---------------------------------------------------------------------

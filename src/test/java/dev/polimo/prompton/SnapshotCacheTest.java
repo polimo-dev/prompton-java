@@ -64,7 +64,7 @@ class SnapshotCacheTest {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\""));
         try (PromptOn prompton = PromptOn.create(config().build())) {
             assertTrue(server.requests().isEmpty(), "constructor must not contact PromptOn");
-            assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
+            assertEquals("openai/gpt-4o-mini", prompton.prompt("greeting").model());
             assertEquals(1, server.requests().size());
             assertEquals("/api/v1/prompts/greeting", server.requests().get(0).path());
             assertEquals("environment=production", server.requests().get(0).query());
@@ -75,7 +75,7 @@ class SnapshotCacheTest {
     void freshCacheHitDoesNotFetchAgainWithinTenSeconds() {
         server.handle(request -> StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\""));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofSeconds(10)).build())) {
-            repeatUseCase(prompton, "greeting", 5);
+            repeatPrompt(prompton, "greeting", 5);
             assertEquals(1, server.requests().size());
         }
     }
@@ -91,10 +91,10 @@ class SnapshotCacheTest {
                             ? "\"summarize-v1\"" : "\"greeting-v1\"");
         });
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(40)).build())) {
-            prompton.useCase("greeting");
-            prompton.useCase("summarize");
+            prompton.prompt("greeting");
+            prompton.prompt("summarize");
             advanceMillis(10_100);
-            prompton.useCase("greeting");
+            prompton.prompt("greeting");
 
             assertEquals(3, server.requests().size());
             assertEquals("/api/v1/prompts/greeting", server.requests().get(2).path());
@@ -112,11 +112,11 @@ class SnapshotCacheTest {
         });
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofSeconds(10)).build())) {
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content());
+                    prompton.prompt("greeting").messages().get(0).content());
             assertEquals("Summarize:\n{% for item in items %}- {{ item }}\n{% endfor %}",
-                    prompton.useCase("summarize").textTemplate());
+                    prompton.prompt("summarize").textTemplate());
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content(),
+                    prompton.prompt("greeting").messages().get(0).content(),
                     "a summarize fetch must not aggregate-merge and mutate greeting's fresh cache");
             assertEquals(2, server.requests().size());
         }
@@ -129,13 +129,13 @@ class SnapshotCacheTest {
                 ? StubServer.Reply.ok(Fixtures.production()).withHeader("etag", "\"v1\"")
                 : StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}"));
         try (PromptOn prompton = PromptOn.create(config().cacheTtl(Duration.ofMillis(80)).build())) {
-            prompton.useCase("greeting");
+            prompton.prompt("greeting");
             advanceMillis(10_100);
-            assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
+            assertEquals("openai/gpt-4o-mini", prompton.prompt("greeting").model());
             assertEquals(2, calls.get());
-            assertTrue(prompton.useCaseDocumentInfo().stale());
+            assertTrue(prompton.promptDocumentInfo().stale());
 
-            repeatUseCase(prompton, "greeting", 5);
+            repeatPrompt(prompton, "greeting", 5);
             assertEquals(2, calls.get(), "failed attempt gates the key until the TTL elapses");
         }
     }
@@ -157,12 +157,12 @@ class SnapshotCacheTest {
                 .build())) {
             long started = System.nanoTime();
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content());
+                    prompton.prompt("greeting").messages().get(0).content());
             long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
             assertTrue(elapsedMs < 1_250, "stale fallback waited " + elapsedMs + "ms");
             Thread.sleep(700);
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content());
+                    prompton.prompt("greeting").messages().get(0).content());
         }
     }
 
@@ -170,10 +170,10 @@ class SnapshotCacheTest {
     void coldFailureWithoutAnyFallbackIsExplicit() {
         server.handle(request -> StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}"));
         try (PromptOn prompton = PromptOn.create(config().diskCacheEnabled(false).build())) {
-            UseCaseException error = assertThrows(UseCaseException.class, () -> prompton.useCase("greeting"));
-            assertEquals(UseCaseException.Reason.NOT_READY, error.reason());
+            PromptException error = assertThrows(PromptException.class, () -> prompton.prompt("greeting"));
+            assertEquals(PromptException.Reason.NOT_READY, error.reason());
             assertEquals(1, server.requests().size());
-            assertThrows(UseCaseException.class, () -> prompton.useCase("greeting"));
+            assertThrows(PromptException.class, () -> prompton.prompt("greeting"));
             assertEquals(1, server.requests().size(), "cold failure is also gated");
         }
     }
@@ -186,7 +186,7 @@ class SnapshotCacheTest {
         });
         try (PromptOn prompton = PromptOn.create(config().diskCacheEnabled(false).build())) {
             runConcurrent(24, () -> assertEquals("openai/gpt-4o-mini",
-                    prompton.useCase("greeting").model()));
+                    prompton.prompt("greeting").model()));
             assertEquals(1, server.requests().size());
         }
     }
@@ -202,10 +202,10 @@ class SnapshotCacheTest {
         try (PromptOn prompton = PromptOn.create(config().diskCacheEnabled(false).build())) {
             ExecutorService pool = Executors.newFixedThreadPool(2);
             try {
-                var slow = pool.submit(() -> prompton.useCase("greeting").model());
+                var slow = pool.submit(() -> prompton.prompt("greeting").model());
                 Thread.sleep(50);
                 long started = System.nanoTime();
-                assertEquals("openai/gpt-4o-mini", prompton.useCase("summarize").model());
+                assertEquals("openai/gpt-4o-mini", prompton.prompt("summarize").model());
                 long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
                 assertTrue(elapsedMs < 400, "summarize waited behind greeting for " + elapsedMs + "ms");
                 assertEquals("openai/gpt-4o-mini", slow.get(3, TimeUnit.SECONDS));
@@ -226,9 +226,9 @@ class SnapshotCacheTest {
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache)
                 .cacheTtl(Duration.ofMillis(50)).build())) {
             advanceMillis(10_100);
-            assertEquals(Source.DISK, prompton.useCase("greeting").source());
-            assertEquals("openai/gpt-4o-mini", prompton.useCase("greeting").model());
-            assertTrue(prompton.useCaseDocumentInfo().stale());
+            assertEquals(PromptSource.DISK, prompton.prompt("greeting").source());
+            assertEquals("openai/gpt-4o-mini", prompton.prompt("greeting").model());
+            assertTrue(prompton.promptDocumentInfo().stale());
         }
     }
 
@@ -239,7 +239,7 @@ class SnapshotCacheTest {
                 .withHeader("last-modified", "Fri, 04 Sep 2026 00:21:48 GMT"));
         Path cache = tempDir.resolve("snapshot.json");
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
-            prompton.useCase("greeting");
+            prompton.prompt("greeting");
         }
         assertTrue(Files.exists(cache));
         Map<String, Object> root = readJson(cache);
@@ -263,9 +263,9 @@ class SnapshotCacheTest {
         });
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content());
+                    prompton.prompt("greeting").messages().get(0).content());
             assertEquals("Summarize:\n{% for item in items %}- {{ item }}\n{% endfor %}",
-                    prompton.useCase("summarize").textTemplate());
+                    prompton.prompt("summarize").textTemplate());
         }
 
         server.close();
@@ -274,9 +274,9 @@ class SnapshotCacheTest {
 
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
             assertEquals("You are a friendly greeter.",
-                    prompton.useCase("greeting").messages().get(0).content());
+                    prompton.prompt("greeting").messages().get(0).content());
             assertEquals("Summarize:\n{% for item in items %}- {{ item }}\n{% endfor %}",
-                    prompton.useCase("summarize").textTemplate());
+                    prompton.prompt("summarize").textTemplate());
             assertEquals(2, Json.mapAt(readJson(cache), "entries").size());
         }
     }
@@ -299,7 +299,7 @@ class SnapshotCacheTest {
                 .diskCacheEnabled(false)
                 .bundlePath(bundle)
                 .build())) {
-            UseCase pin = prompton.useCase("greeting");
+            Prompt pin = prompton.prompt("greeting");
             assertEquals("openai/gpt-4o-mini", pin.model());
             assertEquals("openrouter", pin.provider());
             assertEquals(2, pin.promptVersionNumber());
@@ -320,8 +320,8 @@ class SnapshotCacheTest {
         Path exported = tempDir.resolve("exported.json");
 
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
-            assertEquals("anthropic/claude-sonnet-4", prompton.useCase("support_reply").model());
-            prompton.exportUseCaseDocument(exported);
+            assertEquals("anthropic/claude-sonnet-4", prompton.prompt("support_reply").model());
+            prompton.exportPromptDocument(exported);
         }
 
         Map<String, Object> saved = Conformance.map(
@@ -334,15 +334,15 @@ class SnapshotCacheTest {
         server.handle(request -> StubServer.Reply.of(503, "{\"error\":{\"code\":\"unavailable\"}}"));
         try (PromptOn prompton = PromptOn.create(config().diskCachePath(cache).build())) {
             assertEquals("Reply to pricing for pro.",
-                    prompton.useCase("support_reply")
+                    prompton.prompt("support_reply")
                             .messages(Map.of("question", "pricing", "plan", "pro"))
                             .get(1).content());
         }
     }
 
-    private static void repeatUseCase(PromptOn prompton, String key, int count) {
+    private static void repeatPrompt(PromptOn prompton, String key, int count) {
         for (int i = 0; i < count; i++) {
-            prompton.useCase(key);
+            prompton.prompt(key);
         }
     }
 

@@ -13,9 +13,9 @@ reasons per prompt.
 This SDK does four things and nothing else:
 
 ```
-useCase("support_reply")       -> UseCase: model, params, provider options, prompt template
-useCase.messages(variables)    -> the messages PromptOn manages
-useCase.track(meta, call)      -> times your provider call and queues a monitoring log
+prompt("support_reply")       -> Prompt: model, params, provider options, prompt template
+prompt.messages(variables)    -> the messages PromptOn manages
+prompt.track(meta, call)      -> times your provider call and queues a monitoring log
 flush()                        -> sends what is queued
 ```
 
@@ -59,17 +59,17 @@ Keep `mavenLocal()` enabled so Gradle resolves the source-built artifact.
 
 ```java
 try (PromptOn prompton = PromptOn.create()) {                      // reads PTN_HOST and PTN_API_KEY
-    UseCase useCase = prompton.useCase("support_reply");        // from memory: no HTTP call
+    Prompt prompt = prompton.prompt("support_reply");             // from memory: no HTTP call
     Map<String, Object> variables = Map.of("question", question);
-    List<Message> managedMessages = useCase.messages(variables);
+    List<Message> managedMessages = prompt.messages(variables);
     List<Message> finalMessages = new ArrayList<>(managedMessages);
     finalMessages.addAll(conversationHistory);
     finalMessages.add(Message.of("user", question));
 
-    String answer = useCase.track(TrackMeta.builder()
+    String answer = prompt.track(TrackMeta.builder()
                     .inputMessages(finalMessages).variables(variables).build(),
             () -> {                                                // your provider, your key
-                MyReply reply = myProvider.chat(useCase.model(), finalMessages, useCase.params());
+                MyReply reply = myProvider.chat(prompt.model(), finalMessages, prompt.params());
                 return ProviderResult.ok(reply.text(), Result.builder()
                         .content(reply.text()).finishReason(reply.finishReason()).build());
             });
@@ -128,24 +128,24 @@ PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
 
 ## Resolving and rendering
 
-`useCase` reads the key's cached configuration. Inside the 10-second TTL it is a memory lookup. When
+`prompt` reads the key's cached configuration. Inside the 10-second TTL it is a memory lookup. When
 the key is stale or missing, the SDK makes one `GET /prompts/{key}?environment=...` attempt for that
 key and waits up to one second; if that fails or times out, it returns the last valid value, even if
-expired. With no cached value at all, it raises a normal `UseCaseException`.
+expired. With no cached value at all, it raises a normal `PromptException`.
 
 ```java
-UseCase useCase = prompton.useCase("support_reply");         // the implicit default prompt
-List<String> names = prompton.promptNames("support_reply");  // ["default"]
+Prompt prompt = prompton.prompt("support_reply");         // the implicit default template
+List<String> names = prompton.templateNames("support_reply");  // ["default"]
 ```
 
-A `UseCase` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (reserved; always null),
-`deploymentRevision()`, `prompt()`, `promptNames()`, `model()` (the provider string to send),
+A `Prompt` carries everything one call needs: `key()`, `kind()`, `deploymentId()` (reserved; always null),
+`deploymentRevision()`, `template()`, `templateNames()`, `model()` (the provider string to send),
 `modelId()` (reserved; always null), `provider()`, `api()`, `requestPath()`, `params()`,
 `providerOptions()`, `promptVersionId()` (reserved; always null), `promptVersionNumber()`, and the raw template as
 `messages()` (chat), `decision()` (Decision), or `textTemplate()` (text). An embedding prompt has
 none of those templates.
 
-`useCase.variables()` exposes the prompt's variable definitions, including `name`, `type`,
+`prompt.variables()` exposes the prompt's variable definitions, including `name`, `type`,
 `required`, `description`, and `example`. These definitions describe the values your app supplies;
 the `variables` map passed to rendering and logging still contains the per-call values.
 
@@ -153,8 +153,8 @@ Rendering is a separate step, because a prompt is reusable across calls and the 
 not:
 
 ```java
-List<Message> messages = useCase.messages(Map.of("question", "why is the sky blue?"));
-String prompt = summarizeUseCase.text(Map.of("items", List.of("alpha", "beta")));
+List<Message> messages = prompt.messages(Map.of("question", "why is the sky blue?"));
+String prompt = summarizePrompt.text(Map.of("items", List.of("alpha", "beta")));
 ```
 
 `request` prepares the provider request without sending it. Chat Completions bodies include the
@@ -163,7 +163,7 @@ rendered native `state` and `questions`, model, OpenRouter provider options, and
 metadata fields `session_id`, `trace` and `user`.
 
 ```java
-UseCase decision = prompton.useCase("sentiment");
+Prompt decision = prompton.prompt("sentiment");
 Map<String, Object> variables = Map.of("diary", diaryText);
 Decision inputDecision = decision.decision(variables);
 PreparedRequest prepared = decision.request(variables, RequestOptions.builder()
@@ -187,16 +187,16 @@ compose the final provider request explicitly:
 
 ```java
 Map<String, Object> variables = Map.of("locale", "ko-KR");
-List<Message> managedMessages = useCase.messages(variables);
+List<Message> managedMessages = prompt.messages(variables);
 List<Message> finalMessages = new ArrayList<>(managedMessages);
 finalMessages.addAll(loadConversationHistory(conversationId));
 finalMessages.add(Message.of("user", userText));
 
-MyReply reply = useCase.track(TrackMeta.builder()
+MyReply reply = prompt.track(TrackMeta.builder()
         .variables(variables)
         .inputMessages(finalMessages)
         .build(), () -> {
-            MyReply response = myProvider.chat(useCase.model(), finalMessages, useCase.params());
+            MyReply response = myProvider.chat(prompt.model(), finalMessages, prompt.params());
             return ProviderResult.ok(response, Result.ofContent(response.text()));
         });
 ```
@@ -211,11 +211,11 @@ and a missing variable throws `TemplateException` naming it rather than silently
 There is also the server-side path, for a smoke test or a cold, low-traffic call site:
 
 ```java
-UseCase useCase = prompton.useCaseRemote("support_reply", null);        // cached for cacheTtl
-UseCase rendered = prompton.useCaseRemote("support_reply", null, vars); // server renders
+Prompt prompt = prompton.promptRemote("support_reply", null);        // cached for cacheTtl
+Prompt rendered = prompton.promptRemote("support_reply", null, vars); // server renders
 ```
 
-Never call `useCaseRemote` once per request in a hot loop; that is what the prompt document cache is for. It
+Never call `promptRemote` once per request in a hot loop; that is what the prompt document cache is for. It
 follows the same rules as the prompt document store when PromptOn pushes back: after a `429` the endpoint is
 left alone until `Retry-After` has elapsed, a 5xx or an unreachable server backs off the same way,
 and while the pause is in force the cached answer is served instead of a request.
@@ -225,7 +225,7 @@ and while the pause is in force the cached answer is served instead of a request
 Three entry points, and the buffer behind them.
 
 ```java
-useCase.track(meta, call);   // times your call and builds the record
+prompt.track(meta, call);   // times your call and builds the record
 prompton.log(record);                       // queue a record you built yourself
 prompton.flush();                           // send what is queued, and wait
 ```
@@ -253,7 +253,7 @@ later, or a record your own framework assembles:
 
 ```java
 prompton.log(LogRecord.builder()
-        .useCase(useCase)                         // fills the deployment, prompt and model fields
+        .prompt(prompt)                         // fills the deployment, prompt and model fields
         .status(LogRecord.Status.OK)
         .startedAt(startedAt)
         .latencyMs(latency)
@@ -269,7 +269,7 @@ prompton.log(LogRecord.builder()
 | `id` | UUIDv7, the idempotency key. The SDK issues one; a resend is counted as a duplicate, never stored twice |
 | `prompt_key`, `model`, `status`, `started_at` | Required. `status` is `ok` or `error`; `started_at` must be within 5 minutes ahead and 7 days behind |
 | `kind` | `chat`, `decision`, `text` or `embedding` |
-| `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `UseCase`. In schema 1, deprecated id accessors such as `deploymentId()`, `promptVersionId()` and `modelId()` remain null |
+| `deployment_revision`, `template`, `prompt_version_number` | The readable prompt evidence, filled from the `Prompt`. In schema 1, deprecated id accessors such as `deploymentId()`, `promptVersionId()` and `modelId()` remain null |
 | `source` | `remote`, `disk`, `bundle` or `manual` — which tier answered |
 | `provider`, `model_used`, `upstream_provider` | Who actually served the call |
 | `params` | What was sent. The server blanks it over 4 KB rather than rejecting the record |
@@ -310,7 +310,7 @@ and written atomically (temporary file, then rename) with a sidecar holding the 
 `Last-Modified`; then an optional prompt document bundled into your application. Whichever answered is
 reported as `source`.
 
-**A fixed ten-second per-key config cache.** Within the TTL every `useCase("key")` call is served from memory with
+**A fixed ten-second per-key config cache.** Within the TTL every `prompt("key")` call is served from memory with
 no HTTP call. Once it has passed, the next caller for that key attempts
 `GET /prompts/{key}?environment=...` with that key's `If-None-Match`. A `304` marks the cached value
 fresh. Other keys are independent and are never serialized behind a slow key.
@@ -341,7 +341,7 @@ Instances never coordinate; each keeps its own per-key copy.
 configuration. The SDK accepts only schema version 1, either a singular detail response or a
 keyed offline bundle.
 
-`exportUseCaseDocument` writes the most recently served document and its original ETag metadata
+`exportPromptDocument` writes the most recently served document and its original ETag metadata
 without making network calls. It does not fetch or combine every prompt in the project.
 
 Fetch once and write the file, in CI, on every build, and commit both files it writes — one per
@@ -350,14 +350,14 @@ environment:
 ```java
 try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
         .apiKey(System.getenv("PTN_API_KEY")).environment("production").build())) {
-    prompton.useCase("support_reply");
-    prompton.exportUseCaseDocument(Path.of("src/main/resources/prompts.production.json"));
+    prompton.prompt("support_reply");
+    prompton.exportPromptDocument(Path.of("src/main/resources/prompts.production.json"));
 }
 ```
 
 Then point the SDK at it with `bundlePath(...)`. The `.meta.json` sidecar carries the ETag,
 `Last-Modified`, project and environment, so the first demand fetch can seed `If-None-Match` and
-`useCaseDocumentInfo()` can report how old the bundle really is.
+`promptDocumentInfo()` can report how old the bundle really is.
 
 ### Serverless and short-lived processes
 
@@ -367,10 +367,10 @@ and rely on `bundlePath` — there the bundle is the primary fallback, not a nic
 ### Prove it
 
 Before you call a migration done, run your app with PromptOn unreachable — a wrong host, or the
-network cut — and confirm provider calls still happen. `useCaseDocumentInfo()` tells you which tier answered:
+network cut — and confirm provider calls still happen. `promptDocumentInfo()` tells you which tier answered:
 
 ```java
-UseCaseDocumentInfo info = prompton.useCaseDocumentInfo();
+PromptDocumentInfo info = prompton.promptDocumentInfo();
 log.info("prompton prompt document: source={} age={}s stale={} etag={}",
         info.source(), info.ageSeconds(), info.stale(), info.etag());
 ```
@@ -381,11 +381,11 @@ log.info("prompton prompt document: source={} age={}s stale={} etag={}",
 |---|---|---|
 | PromptOn is slow, down, or answers 5xx while a document is cached | Keeps serving it, marks it stale, and gates the next config attempt for the fixed 10 s window | Nothing. Config is stale at worst |
 | PromptOn answers `429` | Waits out `Retry-After` before contacting the server again | Nothing |
-| PromptOn is unreachable and memory, disk and bundle are all empty | — | `UseCaseException` with reason `NOT_READY` and a message saying PromptOn is unreachable and nothing is cached |
+| PromptOn is unreachable and memory, disk and bundle are all empty | — | `PromptException` with reason `NOT_READY` and a message saying PromptOn is unreachable and nothing is cached |
 | The disk cache or the bundle is corrupt, truncated, or for another environment or project | Ignores it and falls through to the next tier | Nothing, unless no tier is left |
-| The prompt document has no such prompt | — | `UseCaseException`, reason `UNKNOWN_USE_CASE` |
-| The prompt has no live deployment in this environment | — | `UseCaseException`, reason `UNRESOLVED`. A bug in the deployment — never a reason to fall back to a hard-coded prompt |
-| The live deployment pins no prompt of that name | — | `UseCaseException`, reason `UNKNOWN_PROMPT`, listing `promptNames()`. There is no silent fall back to `default` |
+| The prompt document has no such prompt | — | `PromptException`, reason `UNKNOWN_USE_CASE` |
+| The prompt has no live deployment in this environment | — | `PromptException`, reason `UNRESOLVED`. A bug in the deployment — never a reason to fall back to a hard-coded prompt |
+| The live deployment pins no prompt of that name | — | `PromptException`, reason `UNKNOWN_PROMPT`, listing `templateNames()`. There is no silent fall back to `default` |
 | A template needs a variable the call did not supply | — | `TemplateException`, kind `MISSING_VARIABLE`, naming the variable |
 | A monitoring-log batch gets `429` or any 5xx | Resends the same batch with the same ids, honouring `Retry-After`, else doubling from 1 s to 5 min, up to `logMaxAttempts` | Nothing. `logStats().droppedFailed()` counts what was finally given up on |
 | A monitoring-log batch gets `413` | Splits it in half and resends both halves | Nothing |
@@ -404,7 +404,7 @@ The rule behind the table: **a provider call must never fail because PromptOn di
 
 ```java
 PromptOn prompton = PromptOn.create(PromptOnConfig.builder().mode(Mode.TEST).build());
-prompton.putUseCaseDocument(Files.readString(Path.of("src/test/resources/prompts.production.json")));
+prompton.putPromptDocument(Files.readString(Path.of("src/test/resources/prompts.production.json")));
 
 myService.reply("why is the sky blue?");
 

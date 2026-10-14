@@ -104,14 +104,14 @@ class LogRecordConformanceTest {
     }
 
     private Map<String, Object> buildChatSuccess(Map<String, Object> golden) throws Exception {
-        UseCaseDocument document = UseCaseDocument.parse(goldenDocument());
+        PromptDocument document = PromptDocument.parse(goldenDocument());
         try (PromptOn prompton = PromptOn.create(PromptOnConfig.builder()
                 .mode(Mode.TEST)
                 .environment("production")
                 .diskCacheEnabled(false)
                 .build())) {
-            prompton.putUseCaseDocument(document, Source.REMOTE);
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(document, PromptSource.REMOTE);
+            Prompt pin = prompton.prompt("greeting");
             List<Message> messages = pin.messages(Map.of("name", "Ada"));
 
             pin.track(TrackMeta.builder()
@@ -151,7 +151,7 @@ class LogRecordConformanceTest {
 
     /** The prompt document the golden records were produced from, as {@code prompt.json} records it. */
     private static String goldenDocument() {
-        Map<String, Object> useCaseContract = Conformance.load("prompt.json");
-        return Json.write(Json.mapAt(Json.mapAt(useCaseContract, "documents"), "production"));
+        Map<String, Object> promptContract = Conformance.load("prompt.json");
+        return Json.write(Json.mapAt(Json.mapAt(promptContract, "documents"), "production"));
     }
 }

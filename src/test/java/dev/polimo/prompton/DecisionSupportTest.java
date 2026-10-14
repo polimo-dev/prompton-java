@@ -17,14 +17,14 @@ class DecisionSupportTest {
 
     @Test
     void rendersAndPreparesNativeDecisionRequests() {
-        UseCase useCase = Resolver.resolve(UseCaseDocument.parse(Fixtures.decisionDocument()), "sentiment");
+        Prompt prompt = Resolver.resolve(PromptDocument.parse(Fixtures.decisionDocument()), "sentiment");
 
-        assertEquals(UseCaseKind.DECISION, useCase.kind());
-        assertEquals("decisions", useCase.api());
-        assertEquals("/api/v1/systemone", useCase.requestPath());
-        assertEquals(UseCaseKind.DECISION, useCase.pinnedKind());
+        assertEquals(PromptKind.DECISION, prompt.kind());
+        assertEquals("decisions", prompt.api());
+        assertEquals("/api/v1/systemone", prompt.requestPath());
+        assertEquals(PromptKind.DECISION, prompt.pinnedKind());
 
-        Decision rendered = useCase.decision(Map.of("diary", "Today was bright"));
+        Decision rendered = prompt.decision(Map.of("diary", "Today was bright"));
         assertEquals(Map.of("diary", "Today was bright", "literal", "kept"), rendered.state());
         Map<String, Object> mood = Conformance.map(rendered.questions().get("mood"));
         assertEquals("Classify Today was bright.", mood.get("instructions"));
@@ -35,7 +35,7 @@ class DecisionSupportTest {
         Map<String, Object> providerOverrides = new LinkedHashMap<>();
         providerOverrides.put("order", List.of("Together"));
         providerOverrides.put("allow_fallbacks", null);
-        PreparedRequest request = useCase.request(Map.of("diary", "Today was bright"),
+        PreparedRequest request = prompt.request(Map.of("diary", "Today was bright"),
                 RequestOptions.builder()
                         .params(Map.of("session_id", "session-1", "trace", Map.of("id", "trace-1")))
                         .providerOptions(providerOverrides)
@@ -62,8 +62,8 @@ class DecisionSupportTest {
 
     @Test
     void rawDecisionAccessCannotPoisonLaterPreparedRequests() {
-        UseCase useCase = Resolver.resolve(UseCaseDocument.parse(Fixtures.decisionDocument()), "sentiment");
-        Decision raw = useCase.decision();
+        Prompt prompt = Resolver.resolve(PromptDocument.parse(Fixtures.decisionDocument()), "sentiment");
+        Decision raw = prompt.decision();
 
         Map<String, Object> state = Conformance.map(raw.state());
         Map<String, Object> mood = Conformance.map(raw.questions().get("mood"));
@@ -73,7 +73,7 @@ class DecisionSupportTest {
         assertThrows(UnsupportedOperationException.class, () -> mood.put("instructions", "poisoned"));
         assertThrows(UnsupportedOperationException.class, () -> criteria.put("positive", "poisoned"));
 
-        PreparedRequest request = useCase.request(Map.of("diary", "Today was bright"));
+        PreparedRequest request = prompt.request(Map.of("diary", "Today was bright"));
 
         assertEquals(Map.of("diary", "Today was bright", "literal", "kept"), request.body().get("state"));
         Map<String, Object> renderedMood = Conformance.map(
@@ -90,9 +90,9 @@ class DecisionSupportTest {
                 .diskCacheEnabled(false)
                 .pollingEnabled(false)
                 .build())) {
-            prompton.putUseCaseDocument(Fixtures.decisionDocument());
-            UseCase useCase = prompton.useCase("sentiment");
-            Decision input = useCase.decision(Map.of("diary", "Today was bright"));
+            prompton.putPromptDocument(Fixtures.decisionDocument());
+            Prompt prompt = prompton.prompt("sentiment");
+            Decision input = prompt.decision(Map.of("diary", "Today was bright"));
             Map<String, Object> raw = Json.parseObject("""
                 {"model":"typesafe/jev-1.13",
                  "provider":"Fireworks",
@@ -105,7 +105,7 @@ class DecisionSupportTest {
                    "is_byok":true,"cost_details":{"upstream_inference_cost":0.02}}}
                 """);
 
-            Map<String, Object> returned = useCase.trackUnchecked(
+            Map<String, Object> returned = prompt.trackUnchecked(
                     TrackMeta.builder().inputDecision(input).variables(Map.of("diary", "Today was bright")).build(),
                     () -> ProviderResult.ok(raw, Result.fromDecisions(raw)));
 
@@ -164,24 +164,24 @@ class DecisionSupportTest {
 
     @Test
     void rejectsMalformedDecisionRequestsInsteadOfFallingBackToChat() {
-        UseCase useCase = Resolver.resolve(UseCaseDocument.parse(Fixtures.decisionDocument()), "sentiment");
+        Prompt prompt = Resolver.resolve(PromptDocument.parse(Fixtures.decisionDocument()), "sentiment");
 
         assertThrows(PromptOnException.class,
-                () -> useCase.request(Map.of("diary", "x"), RequestOptions.builder()
+                () -> prompt.request(Map.of("diary", "x"), RequestOptions.builder()
                         .params(Map.of("temperature", 0)).build()));
         assertThrows(PromptOnException.class,
-                () -> useCase.request(Map.of("diary", "x"), RequestOptions.builder()
+                () -> prompt.request(Map.of("diary", "x"), RequestOptions.builder()
                         .params(Conformance.map(Json.parseObject("{\"trace\":null}"))).build()));
 
         Map<String, Object> badPath = Json.parseObject(Fixtures.decisionDocument());
         Conformance.map(Conformance.map(badPath.get("deployments")).get("sentiment"))
                 .put("request_path", "/api/v1/chat/completions");
-        UseCase wrongPath = Resolver.resolve(UseCaseDocument.fromMap(badPath), "sentiment");
+        Prompt wrongPath = Resolver.resolve(PromptDocument.fromMap(badPath), "sentiment");
         assertThrows(PromptOnException.class, () -> wrongPath.request(Map.of("diary", "x")));
 
         Map<String, Object> missingProtocol = Json.parseObject(Fixtures.decisionDocument());
         Conformance.map(Conformance.map(missingProtocol.get("deployments")).get("sentiment")).remove("api");
-        UseCase noApi = Resolver.resolve(UseCaseDocument.fromMap(missingProtocol), "sentiment");
+        Prompt noApi = Resolver.resolve(PromptDocument.fromMap(missingProtocol), "sentiment");
         assertThrows(PromptOnException.class, () -> noApi.request(Map.of("diary", "x")));
 
         Map<String, Object> malformed = Json.parseObject(Fixtures.decisionDocument());
@@ -189,7 +189,7 @@ class DecisionSupportTest {
         Map<String, Object> version = Conformance.map(versions.values().iterator().next());
         Conformance.map(Conformance.map(version.get("decision")).get("questions")).put("bad",
                 Map.of("type", "score", "instructions", "Rate", "criteria", List.of("only-one")));
-        UseCase badQuestion = Resolver.resolve(UseCaseDocument.fromMap(malformed), "sentiment");
+        Prompt badQuestion = Resolver.resolve(PromptDocument.fromMap(malformed), "sentiment");
         assertThrows(PromptOnException.class, () -> badQuestion.request(Map.of("diary", "x")));
     }
 
@@ -231,8 +231,8 @@ class DecisionSupportTest {
         Map<String, Object> legacy = Json.parseObject(Fixtures.decisionDocument());
         Conformance.map(Conformance.map(legacy.get("deployments")).get("sentiment"))
                 .put("request_path", "/api/alpha/decisions");
-        UseCase useCase = Resolver.resolve(UseCaseDocument.fromMap(legacy), "sentiment");
+        Prompt prompt = Resolver.resolve(PromptDocument.fromMap(legacy), "sentiment");
 
-        assertEquals("/api/alpha/decisions", useCase.request(Map.of("diary", "offline")).path());
+        assertEquals("/api/alpha/decisions", prompt.request(Map.of("diary", "offline")).path());
     }
 }

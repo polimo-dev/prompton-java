@@ -3,7 +3,7 @@ package dev.polimo.prompton;
 import java.util.Locale;
 
 /** What shape of call a prompt describes. */
-public enum UseCaseKind {
+public enum PromptKind {
     /** A message list. The pinned prompt version carries {@code messages}. */
     CHAT("chat"),
     /** A native Decision state and questions document. */
@@ -15,7 +15,7 @@ public enum UseCaseKind {
 
     private final String wireName;
 
-    UseCaseKind(String wireName) {
+    PromptKind(String wireName) {
         this.wireName = wireName;
     }
 
@@ -25,7 +25,7 @@ public enum UseCaseKind {
     }
 
     /** Parses a prompt document value; {@code null} is the legacy chat default. */
-    public static UseCaseKind from(String value) {
+    public static PromptKind from(String value) {
         if (value == null) {
             return CHAT;
         }
@@ -33,7 +33,7 @@ public enum UseCaseKind {
     }
 
     /** Parses a required prompt document value. */
-    public static UseCaseKind fromRequired(String value) {
+    public static PromptKind fromRequired(String value) {
         if (value == null) {
             throw new PromptOnException("prompt kind is missing");
         }

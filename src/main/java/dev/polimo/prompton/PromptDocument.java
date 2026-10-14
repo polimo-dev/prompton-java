@@ -14,9 +14,9 @@ import java.util.Map;
  * <p>The SDK reads schema version 1. The {@code schema_version} field must be a JSON
  * integer 1; missing, non-integral, and unsupported version values are refused ({@link #parse}
  * throws). A deployment revision is a <em>pin</em>, not a router: one model plus one pinned prompt
- * version per prompt name.
+ * version per template name.
  */
-public final class UseCaseDocument {
+public final class PromptDocument {
 
     /** The schema version this SDK reads. */
     public static final int SCHEMA_VERSION = 1;
@@ -31,10 +31,10 @@ public final class UseCaseDocument {
      * @param defaultParams the params a deployment layers its own on top of
      * @param payloadPolicy how much of a call's text its monitoring logs may carry
      */
-    public record UseCase(
+    public record Prompt(
             String id,
             String key,
-            UseCaseKind kind,
+            PromptKind kind,
             List<Map<String, Object>> variables,
             Map<String, Object> defaultParams,
             PayloadPolicy payloadPolicy) {}
@@ -43,31 +43,31 @@ public final class UseCaseDocument {
      * One live deployment revision: the pin.
      *
      * @param id reserved; always {@code null}
-     * @param useCaseKey the prompt it pins
+     * @param promptKey the prompt it pins
      * @param revision the UTC-date revision label, for example {@code v2026.09.30-1}
      * @param modelId the model lookup key it pins
      * @param api provider API family
      * @param requestPath origin-relative provider request path
      * @param params the params layered over the prompt's defaults
      * @param providerOptions the provider options layered over the model's
-     * @param promptPins one pinned prompt version id per prompt name; empty for an embedding
+     * @param templatePins one pinned prompt version id per template name; empty for an embedding
      */
     public record Deployment(
             String id,
-            String useCaseKey,
+            String promptKey,
             String revision,
             String modelId,
             String api,
             String requestPath,
             Map<String, Object> params,
             Map<String, Object> providerOptions,
-            Map<String, String> promptPins) {}
+            Map<String, String> templatePins) {}
 
     /**
      * One immutable prompt version.
      *
      * @param id the version lookup key
-     * @param promptId the prompt this is a version of, when supplied by the document
+     * @param promptTemplateId the prompt this is a version of
      * @param number the version number, counting up from 1
      * @param kind immutable version kind
      * @param engine liquid or raw
@@ -77,9 +77,9 @@ public final class UseCaseDocument {
      */
     public record PromptVersion(
             String id,
-            String promptId,
+            String promptTemplateId,
             Integer number,
-            UseCaseKind kind,
+            PromptKind kind,
             Template.Engine engine,
             List<Message> messages,
             Decision decision,
@@ -111,17 +111,17 @@ public final class UseCaseDocument {
     private final int schemaVersion;
     private final String project;
     private final String environment;
-    private final Map<String, UseCase> useCases;
+    private final Map<String, Prompt> prompts;
     private final Map<String, Deployment> deployments;
     private final Map<String, PromptVersion> promptVersions;
     private final Map<String, Model> models;
     private final List<String> warnings;
 
-    private UseCaseDocument(
+    private PromptDocument(
             int schemaVersion,
             String project,
             String environment,
-            Map<String, UseCase> useCases,
+            Map<String, Prompt> prompts,
             Map<String, Deployment> deployments,
             Map<String, PromptVersion> promptVersions,
             Map<String, Model> models,
@@ -129,7 +129,7 @@ public final class UseCaseDocument {
         this.schemaVersion = schemaVersion;
         this.project = project;
         this.environment = environment;
-        this.useCases = Collections.unmodifiableMap(useCases);
+        this.prompts = Collections.unmodifiableMap(prompts);
         this.deployments = Collections.unmodifiableMap(deployments);
         this.promptVersions = Collections.unmodifiableMap(promptVersions);
         this.models = Collections.unmodifiableMap(models);
@@ -137,31 +137,31 @@ public final class UseCaseDocument {
     }
 
     /** Parses a prompt document JSON body. */
-    public static UseCaseDocument parse(String json) {
+    public static PromptDocument parse(String json) {
         return fromMap(Json.parseObject(json));
     }
 
     /** Builds a prompt document from an already-decoded body. */
     @SuppressWarnings("unchecked")
-    public static UseCaseDocument fromMap(Map<String, Object> doc) {
+    public static PromptDocument fromMap(Map<String, Object> doc) {
         List<String> warnings = new ArrayList<>();
         int version = readSchemaVersion(doc);
         Map<String, Object> normalized = hasSingleResource(doc) ? normalizeSingleDocument(doc) : doc;
 
-        Map<String, Object> rawUseCases = Json.mapAt(normalized, "prompts");
-        if (rawUseCases == null) {
+        Map<String, Object> rawPrompts = Json.mapAt(normalized, "prompts");
+        if (rawPrompts == null) {
             throw new PromptOnException("prompt document requires keyed prompts; a discovery index is not configuration");
         }
         requiredMap(normalized, "deployments", "deployments");
         requiredMap(normalized, "prompt_versions", "prompt versions");
         requiredMap(normalized, "models", "models");
 
-        Map<String, UseCase> useCases = new LinkedHashMap<>();
-        rawUseCases.forEach((key, value) -> {
+        Map<String, Prompt> prompts = new LinkedHashMap<>();
+        rawPrompts.forEach((key, value) -> {
             if (value instanceof Map<?, ?> raw) {
-                useCases.put(key, readUseCase(key, (Map<String, Object>) raw));
+                prompts.put(key, readPrompt(key, (Map<String, Object>) raw));
             } else {
-                warnings.add("invalid_use_case: " + key);
+                warnings.add("invalid_prompt: " + key);
             }
         });
 
@@ -204,11 +204,11 @@ public final class UseCaseDocument {
             });
         }
 
-        return new UseCaseDocument(
+        return new PromptDocument(
                 version,
                 Json.stringAt(normalized, "project"),
                 Json.stringAt(normalized, "environment"),
-                useCases,
+                prompts,
                 deployments,
                 promptVersions,
                 models,
@@ -291,7 +291,7 @@ public final class UseCaseDocument {
         long version = ((Number) raw).longValue();
         if (version != SCHEMA_VERSION) {
             throw new PromptOnException(
-                "unsupported prompt document schema_version " + version
+                    "unsupported prompt document schema_version " + version
                             + "; this SDK reads version "
                             + SCHEMA_VERSION);
         }
@@ -306,7 +306,7 @@ public final class UseCaseDocument {
     }
 
     @SuppressWarnings("unchecked")
-    private static UseCase readUseCase(String key, Map<String, Object> raw) {
+    private static Prompt readPrompt(String key, Map<String, Object> raw) {
         List<Map<String, Object>> schema = new ArrayList<>();
         List<Object> rawSchema = Json.listAt(raw, "variables");
         if (rawSchema != null) {
@@ -317,10 +317,10 @@ public final class UseCaseDocument {
             }
         }
         Map<String, Object> defaults = Json.mapAt(raw, "default_params");
-        return new UseCase(
+        return new Prompt(
                 null,
                 key,
-                UseCaseKind.from(Json.stringAt(raw, "kind")),
+                PromptKind.from(Json.stringAt(raw, "kind")),
                 List.copyOf(schema),
                 frozen(defaults),
                 PayloadPolicy.fromMap(Json.mapAt(raw, "payload_policy")));
@@ -347,8 +347,8 @@ public final class UseCaseDocument {
         if (value == null) {
             return null;
         }
-        if (value instanceof String s) {
-            return s;
+        if (value instanceof String revision) {
+            return revision;
         }
         throw new PromptOnException("deployment revision must be a string");
     }
@@ -378,7 +378,7 @@ public final class UseCaseDocument {
                 promptId,
                 number,
                 Json.stringAt(raw, "kind") != null
-                        ? UseCaseKind.fromRequired(Json.stringAt(raw, "kind"))
+                        ? PromptKind.fromRequired(Json.stringAt(raw, "kind"))
                         : null,
                 Template.Engine.from(Json.stringAt(raw, "engine")),
                 messages,
@@ -462,8 +462,8 @@ public final class UseCaseDocument {
     }
 
     /** Every prompt, keyed by prompt key. */
-    public Map<String, UseCase> useCases() {
-        return useCases;
+    public Map<String, Prompt> prompts() {
+        return prompts;
     }
 
     /** The live deployment per prompt key. A prompt with none is simply absent. */
@@ -486,12 +486,12 @@ public final class UseCaseDocument {
         return warnings;
     }
 
-    /** The sorted prompt names the live deployment of {@code useCaseKey} pins. */
-    public List<String> promptNames(String useCaseKey) {
-        if (!useCases.containsKey(useCaseKey)) {
-            throw UseCaseException.of(UseCaseException.Reason.UNKNOWN_USE_CASE, useCaseKey);
+    /** The sorted template names the live deployment of {@code promptKey} pins. */
+    public List<String> templateNames(String promptKey) {
+        if (!prompts.containsKey(promptKey)) {
+            throw PromptException.of(PromptException.Reason.UNKNOWN_PROMPT, promptKey);
         }
-        Deployment deployment = deployments.get(useCaseKey);
-        return deployment == null ? List.of() : List.copyOf(deployment.promptPins().keySet());
+        Deployment deployment = deployments.get(promptKey);
+        return deployment == null ? List.of() : List.copyOf(deployment.templatePins().keySet());
     }
 }

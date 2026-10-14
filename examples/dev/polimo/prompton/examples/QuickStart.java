@@ -9,13 +9,13 @@ import dev.polimo.prompton.Mode;
 import dev.polimo.prompton.PromptOn;
 import dev.polimo.prompton.PromptOnConfig;
 import dev.polimo.prompton.ProviderResult;
-import dev.polimo.prompton.UseCase;
+import dev.polimo.prompton.Prompt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Load a use case, render its prompt, "call a provider", and log the call.
+ * Load a prompt, render its prompt, "call a provider", and log the call.
  *
  * <p>Run it against the local fixture server:
  *
@@ -23,7 +23,7 @@ import java.util.Map;
  * PTN_HOST=http://localhost:4000 PTN_API_KEY=ptn_sdkfixture_... ./gradlew example
  * </pre>
  *
- * <p>With no {@code PTN_API_KEY} it runs in test mode against a use-case document built into this file, so
+ * <p>With no {@code PTN_API_KEY} it runs in test mode against a prompt document built into this file, so
  * it works with no server at all — which is also how you would test your own call sites.
  */
 public final class QuickStart {
@@ -46,23 +46,23 @@ public final class QuickStart {
 
         try (PromptOn prompton = PromptOn.create(config)) {
             if (!live) {
-                System.out.println("No PTN_API_KEY: running in test mode on a built-in use-case document.\n");
-                prompton.putUseCaseDocument(BUILT_IN_SNAPSHOT);
+                System.out.println("No PTN_API_KEY: running in test mode on a built-in prompt document.\n");
+                prompton.putPromptDocument(BUILT_IN_SNAPSHOT);
             }
 
             // 1. Resolve: which prompt version, which model, which params.
-            UseCase useCase = prompton.useCase("greeting");
-            System.out.println("use case   : " + useCase.key() + " ("
-                    + useCase.kind().wireName() + ")");
-            System.out.println("deployment : revision " + useCase.deploymentRevision()
-                    + " from " + useCase.source().wireName());
-            System.out.println("model      : " + useCase.model() + " via " + useCase.provider());
-            System.out.println("params     : " + useCase.params());
-            System.out.println("prompts    : " + useCase.promptNames());
+            Prompt prompt = prompton.prompt("greeting");
+            System.out.println("prompt   : " + prompt.key() + " ("
+                    + prompt.kind().wireName() + ")");
+            System.out.println("deployment : revision " + prompt.deploymentRevision()
+                    + " from " + prompt.source().wireName());
+            System.out.println("model      : " + prompt.model() + " via " + prompt.provider());
+            System.out.println("params     : " + prompt.params());
+            System.out.println("prompts    : " + prompt.templateNames());
 
             // 2. Render the messages PromptOn manages, then add the app-owned conversation state.
             Map<String, Object> variables = Map.of("name", "Ada");
-            List<Message> managedMessages = useCase.messages(variables);
+            List<Message> managedMessages = prompt.messages(variables);
             List<Message> messages = new ArrayList<>(managedMessages);
             messages.add(Message.of("assistant", "Earlier answer."));
             messages.add(Message.of("user", "Say hello to Ada."));
@@ -72,7 +72,7 @@ public final class QuickStart {
 
             // 3. Call the provider yourself, with your own key and HTTP client, inside the wrapper
             //    that times it and logs the result.
-            String answer = useCase.track(TrackMeta.builder()
+            String answer = prompt.track(TrackMeta.builder()
                             .inputMessages(messages)
                             .variables(variables)
                             .endUserRef("user-42")
@@ -80,11 +80,11 @@ public final class QuickStart {
                             .context(Map.of("language", "en"))
                             .build(),
                     () -> {
-                        FakeProviderReply reply = callYourProvider(useCase.model(), messages);
+                        FakeProviderReply reply = callYourProvider(prompt.model(), messages);
                         return ProviderResult.ok(reply.text(), Result.builder()
                                 .content(reply.text())
                                 .finishReason(reply.finishReason())
-                                .modelUsed(useCase.model())
+                                .modelUsed(prompt.model())
                                 .usage(new Usage(
                                         reply.inputTokens(), reply.outputTokens(),
                                         null, "unknown", null))

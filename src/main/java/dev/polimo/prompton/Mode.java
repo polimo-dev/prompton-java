@@ -4,7 +4,7 @@ package dev.polimo.prompton;
 public enum Mode {
     /** Normal operation: fetch requested prompt config on demand, mirror to disk, send monitoring logs. */
     LIVE,
-    /** No HTTP at all. Use-case documents are installed by the test, and logs are captured for assertions. */
+    /** No HTTP at all. Prompt documents are installed by the test, and logs are captured for assertions. */
     TEST,
     /**
      * No HTTP. The prompt document comes from the disk cache or the bundle.

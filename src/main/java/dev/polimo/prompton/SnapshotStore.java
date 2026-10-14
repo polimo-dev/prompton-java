@@ -34,10 +34,10 @@ final class SnapshotStore implements AutoCloseable {
 
     /** One loaded document and where it came from. */
     record Entry(
-            UseCaseDocument useCaseDocument,
+            PromptDocument promptDocument,
             String etag,
             String lastModified,
-            Source source,
+            PromptSource source,
             Instant fetchedAt,
             Instant staleSince,
             String rawJson) {}
@@ -153,12 +153,12 @@ final class SnapshotStore implements AutoCloseable {
             lastServed.set(entry);
             return entry;
         }
-        throw UseCaseException.of(UseCaseException.Reason.NOT_READY, null);
+        throw PromptException.of(PromptException.Reason.NOT_READY, null);
     }
 
     private boolean isFresh(Entry entry, Instant now) {
         return entry != null
-                && entry.source() == Source.REMOTE
+                && entry.source() == PromptSource.REMOTE
                 && entry.staleSince() == null
                 && Duration.between(entry.fetchedAt(), now).compareTo(CONFIG_TTL) < 0;
     }
@@ -270,14 +270,14 @@ final class SnapshotStore implements AutoCloseable {
             if (previous == null) {
                 return FetchOutcome.failed("304 without a cached value", startedAt, deadline);
             }
-            Entry refreshed = new Entry(previous.useCaseDocument(), previous.etag(), previous.lastModified(),
-                    Source.REMOTE, now(), null, previous.rawJson());
+            Entry refreshed = new Entry(previous.promptDocument(), previous.etag(), previous.lastModified(),
+                    PromptSource.REMOTE, now(), null, previous.rawJson());
             return FetchOutcome.notModified(refreshed, startedAt, deadline);
         }
         if (status == 200) {
-            UseCaseDocument document;
+            PromptDocument document;
             try {
-                document = UseCaseDocument.parse(response.body());
+                document = PromptDocument.parse(response.body());
             } catch (RuntimeException e) {
                 return FetchOutcome.failed("undecodable prompt document: " + e.getMessage(),
                         startedAt, deadline);
@@ -290,7 +290,7 @@ final class SnapshotStore implements AutoCloseable {
                     document,
                     response.header("etag"),
                     response.header("last-modified"),
-                    Source.REMOTE,
+                    PromptSource.REMOTE,
                     now(),
                     null,
                     response.body());
@@ -312,7 +312,7 @@ final class SnapshotStore implements AutoCloseable {
 
     private Entry localFor(String key) {
         Entry local = localDocument.get();
-        if (local == null || !local.useCaseDocument().useCases().containsKey(key)) {
+        if (local == null || !local.promptDocument().prompts().containsKey(key)) {
             return null;
         }
         return local;
@@ -320,7 +320,7 @@ final class SnapshotStore implements AutoCloseable {
 
     private void markStale(KeyState state, Instant when) {
         if (state.entry != null && state.entry.staleSince() == null) {
-            state.entry = new Entry(state.entry.useCaseDocument(), state.entry.etag(),
+            state.entry = new Entry(state.entry.promptDocument(), state.entry.etag(),
                     state.entry.lastModified(), state.entry.source(), state.entry.fetchedAt(),
                     when, state.entry.rawJson());
         }
@@ -339,10 +339,10 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /** Installs a document the application supplied. */
-    void put(UseCaseDocument document, Source source, String rawJson) {
+    void put(PromptDocument document, PromptSource source, String rawJson) {
         Instant now = now();
         Entry entry = new Entry(document, null, null, source, now,
-                source == Source.REMOTE ? null : now, rawJson);
+                source == PromptSource.REMOTE ? null : now, rawJson);
         localDocument.set(entry);
         lastServed.set(entry);
         states.clear();
@@ -378,10 +378,10 @@ final class SnapshotStore implements AutoCloseable {
 
     private void loadLocal() {
         boolean loadedDiskEntries = loadDiskEntries(config.diskCachePath());
-        if (!loadedDiskEntries && loadFile(config.diskCachePath(), Source.DISK)) {
+        if (!loadedDiskEntries && loadFile(config.diskCachePath(), PromptSource.DISK)) {
             return;
         }
-        loadFile(config.bundlePath(), Source.BUNDLE);
+        loadFile(config.bundlePath(), PromptSource.BUNDLE);
     }
 
     @SuppressWarnings("unchecked")
@@ -411,9 +411,9 @@ final class SnapshotStore implements AutoCloseable {
             if (body == null || meta == null) {
                 continue;
             }
-            UseCaseDocument document;
+            PromptDocument document;
             try {
-                document = UseCaseDocument.parse(body);
+                document = PromptDocument.parse(body);
             } catch (RuntimeException e) {
                 continue;
             }
@@ -425,7 +425,7 @@ final class SnapshotStore implements AutoCloseable {
             }
             Instant fetchedAt = parseInstant(Json.stringAt(meta, "fetched_at"));
             Entry entry = new Entry(document, Json.stringAt(meta, "etag"),
-                    Json.stringAt(meta, "last_modified"), Source.DISK, fetchedAt,
+                    Json.stringAt(meta, "last_modified"), PromptSource.DISK, fetchedAt,
                     now(), body);
             KeyState state = states.computeIfAbsent(item.getKey(), ignored -> new KeyState());
             synchronized (state) {
@@ -440,14 +440,14 @@ final class SnapshotStore implements AutoCloseable {
         return loaded;
     }
 
-    private boolean loadFile(Path path, Source source) {
+    private boolean loadFile(Path path, PromptSource source) {
         DiskCache.Stored stored = DiskCache.read(path);
         if (stored == null) {
             return false;
         }
-        UseCaseDocument document;
+        PromptDocument document;
         try {
-            document = UseCaseDocument.parse(stored.body());
+            document = PromptDocument.parse(stored.body());
         } catch (RuntimeException e) {
             LOG.log(Level.WARNING, () -> "[PromptOn] ignoring the " + source.wireName()
                     + " prompt document at " + path + ": " + e.getMessage());
@@ -486,7 +486,7 @@ final class SnapshotStore implements AutoCloseable {
         }
     }
 
-    private String mismatch(UseCaseDocument document, String requestedKey) {
+    private String mismatch(PromptDocument document, String requestedKey) {
         String environment = document.environment();
         if (environment != null && !environment.equals(config.environment())) {
             return "it describes environment \"" + environment + "\", not \"" + config.environment()
@@ -496,7 +496,7 @@ final class SnapshotStore implements AutoCloseable {
         if (project != null && config.project() != null && !project.equals(config.project())) {
             return "it belongs to project \"" + project + "\", not \"" + config.project() + "\"";
         }
-        if (requestedKey != null && !document.useCases().containsKey(requestedKey)) {
+        if (requestedKey != null && !document.prompts().containsKey(requestedKey)) {
             return "it does not contain requested prompt \"" + requestedKey + "\"";
         }
         return null;
@@ -552,8 +552,8 @@ final class SnapshotStore implements AutoCloseable {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("etag", entry.etag());
         meta.put("last_modified", entry.lastModified());
-        meta.put("environment", entry.useCaseDocument().environment());
-        meta.put("project", entry.useCaseDocument().project());
+        meta.put("environment", entry.promptDocument().environment());
+        meta.put("project", entry.promptDocument().project());
         meta.put("fetched_at", entry.fetchedAt().toString());
         return meta;
     }
@@ -572,8 +572,8 @@ final class SnapshotStore implements AutoCloseable {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("etag", entry.etag());
         meta.put("last_modified", entry.lastModified());
-        meta.put("environment", entry.useCaseDocument().environment());
-        meta.put("project", entry.useCaseDocument().project());
+        meta.put("environment", entry.promptDocument().environment());
+        meta.put("project", entry.promptDocument().project());
         meta.put("exported_at", now().toString());
         if (!DiskCache.write(path, body, meta)) {
             throw new PromptOnException("could not write the prompt document bundle to " + path);
@@ -581,21 +581,21 @@ final class SnapshotStore implements AutoCloseable {
     }
 
     /** What a health endpoint should report. */
-    UseCaseDocumentInfo info() {
+    PromptDocumentInfo info() {
         Entry entry = lastServed.get();
         if (entry == null) {
-            return UseCaseDocumentInfo.NONE;
+            return PromptDocumentInfo.NONE;
         }
         long age = Math.max(0, Duration.between(entry.fetchedAt(), now()).toSeconds());
-        return new UseCaseDocumentInfo(
+        return new PromptDocumentInfo(
                 entry.source(),
                 entry.etag(),
                 entry.lastModified(),
                 entry.fetchedAt(),
-                entry.source() != Source.REMOTE || entry.staleSince() != null,
+                entry.source() != PromptSource.REMOTE || entry.staleSince() != null,
                 age,
-                entry.useCaseDocument().project(),
-                entry.useCaseDocument().environment());
+                entry.promptDocument().project(),
+                entry.promptDocument().environment());
     }
 
     @Override

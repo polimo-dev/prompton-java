@@ -50,7 +50,7 @@ class PreviewHttpContractIT {
             Map<String, Object> variables = variables();
             List<Message> appHistory = appHistory();
 
-            UseCase local = client.useCase(key);
+            Prompt local = client.prompt(key);
             assertEquals(key, local.key());
             List<Message> managedMessages = local.messages(variables);
             assertProviderPayload(expectedRender, managedMessages, local.params());
@@ -59,7 +59,7 @@ class PreviewHttpContractIT {
             finalMessages.add(Message.of("user", "Tell me about park walks."));
             assertEquals(managedMessages.size() + appHistory.size() + 1, finalMessages.size());
 
-            UseCase remote = client.useCaseRemote(key, null, variables);
+            Prompt remote = client.promptRemote(key, null, variables);
             assertMessages(expectedRender, remote.messages());
             assertFalse(remote.providerPreparedRequest().isEmpty(), "remote render preserves request");
             Map<String, Object> preparedBody = Json.mapAt(remote.providerPreparedRequest(), "body");

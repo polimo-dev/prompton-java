@@ -11,8 +11,8 @@ import java.util.Map;
  *
  * <p>{@code prompt_key}, {@code model}, {@code status} and {@code started_at} are required;
  * {@link PromptOn#log(LogRecord)} fills in {@code id} (a UUIDv7, the idempotency key),
- * {@code sdk} and — when a {@link UseCase} is attached — {@code deployment_revision},
- * {@code prompt}, {@code prompt_version_number}, {@code provider}, {@code kind}, {@code params}
+ * {@code sdk} and — when a {@link Prompt} is attached — {@code deployment_revision},
+ * {@code template}, {@code prompt_version_number}, {@code provider}, {@code kind}, {@code params}
  * and {@code source}.
  *
  * <p>Keep secrets out of {@code input}, {@code output}, {@code context} and {@code metadata}: no
@@ -69,8 +69,8 @@ public final class LogRecord {
 
     /** The prompt key. */
     public String key() {
-        Object useCase = fields.get("prompt_key");
-        return useCase == null ? null : String.valueOf(useCase);
+        Object prompt = fields.get("prompt_key");
+        return prompt == null ? null : String.valueOf(prompt);
     }
 
     /** Which environment's batch this record belongs in, or {@code null} for the configured one. */
@@ -130,7 +130,7 @@ public final class LogRecord {
         }
 
         /** @param value chat, text or embedding */
-        public Builder kind(UseCaseKind value) {
+        public Builder kind(PromptKind value) {
             fields.put("kind", value == null ? null : value.wireName());
             return this;
         }
@@ -238,7 +238,7 @@ public final class LogRecord {
         }
 
         /** @param value where the configuration behind this call came from */
-        public Builder source(Source value) {
+        public Builder source(PromptSource value) {
             fields.put("source", value == null ? null : value.wireName());
             return this;
         }
@@ -249,8 +249,8 @@ public final class LogRecord {
             return this;
         }
 
-        /** @param value the prompt name that was used */
-        public Builder prompt(String value) {
+        /** @param value the template name that was used */
+        public Builder template(String value) {
             fields.put("template", value);
             return this;
         }
@@ -289,28 +289,28 @@ public final class LogRecord {
         }
 
         /**
-         * Copies the prompt evidence out of a {@link UseCase}: the deployment, the prompt, the
+         * Copies the prompt evidence out of a {@link Prompt}: the deployment, the prompt, the
          * model and provider, the kind, the params, and where the prompt document came from.
          *
-         * @param useCase the prompt this call used
+         * @param prompt the prompt this call used
          * @return this builder
          */
-        public Builder useCase(UseCase useCase) {
-            if (useCase == null) {
+        public Builder prompt(Prompt prompt) {
+            if (prompt == null) {
                 return this;
             }
-            key(useCase.key());
-            kind(useCase.kind());
-            deploymentRevision(useCase.deploymentRevision());
-            prompt(useCase.prompt());
-            promptVersionNumber(useCase.promptVersionNumber());
-            model(useCase.model());
-            provider(useCase.provider());
-            source(useCase.source());
+            key(prompt.key());
+            kind(prompt.kind());
+            deploymentRevision(prompt.deploymentRevision());
+            template(prompt.template());
+            promptVersionNumber(prompt.promptVersionNumber());
+            model(prompt.model());
+            provider(prompt.provider());
+            source(prompt.source());
             if (!fields.containsKey("params")) {
-                params(useCase.params());
+                params(prompt.params());
             }
-            this.payloadPolicy = useCase.payloadPolicy();
+            this.payloadPolicy = prompt.payloadPolicy();
             return this;
         }
 

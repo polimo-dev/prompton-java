@@ -20,8 +20,8 @@ import java.util.logging.Logger;
  * a prompt resolves.
  *
  * <p>It is not for a hot loop — that is what the prompt document cache is for. Called without variables it
- * returns the raw templates and the answer is cached for the same TTL as the prompt document, per use
- * case, prompt name and environment, so the app renders locally; called with variables the server
+ * returns the raw templates and the answer is cached for the same TTL as the prompt document, per
+ * prompt key, template name and environment, so the app renders locally; called with variables the server
  * renders and the answer is not cached. When PromptOn rate-limits, fails or is unreachable, a
  * cached answer is served rather than an error.
  *
@@ -31,11 +31,11 @@ import java.util.logging.Logger;
  * {@code maxBackoff} — has elapsed, and a 5xx, a timeout or a transport failure backs off the same
  * way. While the pause is in force every call is answered from the cache.
  */
-final class ResolveClient {
+final class PromptRenderClient {
 
-    private static final Logger LOG = Logger.getLogger(ResolveClient.class.getName());
+    private static final Logger LOG = Logger.getLogger(PromptRenderClient.class.getName());
 
-    private record Cached(UseCase value, Instant expiresAt) {}
+    private record Cached(Prompt value, Instant expiresAt) {}
 
     private final PromptOnConfig config;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
@@ -43,13 +43,13 @@ final class ResolveClient {
     private volatile Instant pausedUntil = Instant.EPOCH;
     private volatile int failures;
 
-    ResolveClient(PromptOnConfig config) {
+    PromptRenderClient(PromptOnConfig config) {
         this.config = config;
     }
 
-    UseCase resolve(String useCase, String promptName, Map<String, Object> variables) {
+    Prompt resolve(String prompt, String templateName, Map<String, Object> variables) {
         boolean cacheable = variables == null;
-        String key = useCase + " " + (promptName == null ? "" : promptName)
+        String key = prompt + " " + (templateName == null ? "" : templateName)
                 + " " + config.environment();
         Cached cached = cache.get(key);
         if (cacheable && cached != null && Instant.now().isBefore(cached.expiresAt())) {
@@ -78,8 +78,8 @@ final class ResolveClient {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("environment", config.environment());
-        if (promptName != null) {
-            body.put("template", promptName);
+        if (templateName != null) {
+            body.put("template", templateName);
         }
         if (variables != null) {
             body.put("variables", variables);
@@ -92,7 +92,7 @@ final class ResolveClient {
 
         HttpResponse response;
         try {
-            String path = "/prompts/" + URLEncoder.encode(useCase, StandardCharsets.UTF_8)
+            String path = "/prompts/" + URLEncoder.encode(prompt, StandardCharsets.UTF_8)
                     .replace("+", "%20") + "/render";
             response = config.httpClient().send(new HttpRequest(
                     "POST", config.baseUrl() + path, headers, Json.write(body),
@@ -119,12 +119,12 @@ final class ResolveClient {
             }
         }
         if (status != 200) {
-            throw error(response, useCase);
+            throw error(response, prompt);
         }
 
         failures = 0;
         pausedUntil = Instant.EPOCH;
-        UseCase loaded = parse(Json.parseObject(response.body()));
+        Prompt loaded = parse(Json.parseObject(response.body()));
         if (cacheable) {
             cache.put(key, new Cached(loaded, Instant.now().plus(config.cacheTtl())));
         }
@@ -142,7 +142,7 @@ final class ResolveClient {
         return wait;
     }
 
-    private UseCase parse(Map<String, Object> body) {
+    private Prompt parse(Map<String, Object> body) {
         Map<String, Object> deployment = Json.mapAt(body, "deployment");
         Map<String, Object> version = Json.mapAt(body, "prompt_version");
         List<String> prompts = new ArrayList<>();
@@ -156,13 +156,13 @@ final class ResolveClient {
             rawWarnings.forEach(warning -> warnings.add(String.valueOf(warning)));
         }
         String source = Json.stringAt(body, "source");
-        UseCase.Builder builder = new UseCase.Builder()
+        Prompt.Builder builder = new Prompt.Builder()
                 .key(Json.stringAt(body, "key"))
-                .kind(UseCaseKind.from(Json.stringAt(body, "kind")))
+                .kind(PromptKind.from(Json.stringAt(body, "kind")))
                 .deploymentId(deployment == null ? null : Json.stringAt(deployment, "id"))
                 .deploymentRevision(readRevision(deployment))
-                .prompt(Json.stringAt(body, "template"))
-                .promptNames(prompts)
+                .template(Json.stringAt(body, "template"))
+                .templateNames(prompts)
                 .model(Json.stringAt(body, "model"))
                 .modelId(Json.stringAt(body, "model_id"))
                 .provider(Json.stringAt(body, "provider"))
@@ -174,7 +174,7 @@ final class ResolveClient {
                 .providerPreparedRequest(preparedRequest(Json.mapAt(body, "request")))
                 .promptVersionId(version == null ? null : Json.stringAt(version, "id"))
                 .promptVersionNumber(version == null ? null : Json.intAt(version, "number", null))
-                .source(source == null ? Source.REMOTE : Source.from(source))
+                .source(source == null ? PromptSource.REMOTE : PromptSource.from(source))
                 .etag(Json.stringAt(body, "etag"))
                 .warnings(warnings);
 
@@ -199,12 +199,12 @@ final class ResolveClient {
         return builder.build();
     }
 
-    private UseCaseKind readPinnedKind(Map<String, Object> body, Map<String, Object> version) {
+    private PromptKind readPinnedKind(Map<String, Object> body, Map<String, Object> version) {
         String value = version == null ? null : Json.stringAt(version, "kind");
         if (value == null) {
             value = Json.stringAt(body, "kind");
         }
-        return value == null ? null : UseCaseKind.fromRequired(value);
+        return value == null ? null : PromptKind.fromRequired(value);
     }
 
     private Map<String, Object> preparedRequest(Map<String, Object> request) {
@@ -217,13 +217,16 @@ final class ResolveClient {
         return out;
     }
 
-    private String readRevision(Map<String, Object> deployment) {
-        Object value = deployment == null ? null : deployment.get("revision");
+    private static String readRevision(Map<String, Object> deployment) {
+        if (deployment == null) {
+            return null;
+        }
+        Object value = deployment.get("revision");
         if (value == null) {
             return null;
         }
-        if (value instanceof String s) {
-            return s;
+        if (value instanceof String revision) {
+            return revision;
         }
         throw new PromptOnException("deployment revision must be a string");
     }
@@ -246,8 +249,8 @@ final class ResolveClient {
         String reason = Json.stringAt(safeDetails, "reason");
         if ("unresolved".equals(reason)) {
             String key = Json.stringAt(safeDetails, "key");
-            return UseCaseException.of(
-                    UseCaseException.Reason.UNRESOLVED, key == null ? requestedKey : key);
+            return PromptException.of(
+                    PromptException.Reason.UNRESOLVED, key == null ? requestedKey : key);
         }
         if ("unknown_template".equals(reason)) {
             List<String> available = new ArrayList<>();
@@ -256,14 +259,14 @@ final class ResolveClient {
                 raw.forEach(name -> available.add(String.valueOf(name)));
             }
             String key = Json.stringAt(safeDetails, "key");
-            return UseCaseException.unknownPrompt(
+            return PromptException.unknownTemplate(
                     key == null ? requestedKey : key,
                     Json.stringAt(safeDetails, "template"),
                     available);
         }
         if ("not_found".equals(code) && safeDetails.containsKey("key")) {
-            return UseCaseException.of(
-                    UseCaseException.Reason.UNKNOWN_USE_CASE, Json.stringAt(safeDetails, "key"));
+            return PromptException.of(
+                    PromptException.Reason.UNKNOWN_PROMPT, Json.stringAt(safeDetails, "key"));
         }
         String missing = Json.stringAt(safeDetails, "missing_variable");
         if (missing != null) {

@@ -1,7 +1,7 @@
 package dev.polimo.prompton;
 
 /**
- * The provider call {@link UseCase#track(TrackMeta, ProviderCall) UseCase.track} times and logs.
+ * The provider call {@link Prompt#track(TrackMeta, ProviderCall) Prompt.track} times and logs.
  *
  * @param <T> whatever your own code wants back
  */

@@ -5,86 +5,86 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The local resolution algorithm: prompt document + prompt key (+ prompt name) → {@link UseCase}.
+ * The local resolution algorithm: prompt document + prompt key (+ template name) → {@link Prompt}.
  *
  * <p>A pure function, and the same two lookups the server runs for {@code POST /prompts/{key}/render}:
  *
  * <pre>
- * deployment       = document.deployments[use_case]                     # absent -&gt; unresolved
+ * deployment       = document.deployments[prompt_key]                     # absent -&gt; unresolved
  * version          = document.prompt_versions[key + "@" + deployment.prompt_version]
- * kind             = version.kind || use_case.kind
+ * kind             = version.kind || prompt.kind
  * model            = document.models[deployment.provider + ":" + deployment.model]
- * params           = use_case.default_params  &lt;- deployment.params
+ * params           = prompt.default_params  &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
  * </pre>
  *
- * <p>A prompt name the deployment does not pin is {@link UseCaseException.Reason#UNKNOWN_PROMPT}
+ * <p>A template name the deployment does not pin is {@link PromptException.Reason#UNKNOWN_TEMPLATE}
  * — never a silent fall back to {@code default}, because shipping English to a request that asked
  * for {@code ko} is worse than an error.
  */
 final class Resolver {
 
-    /** The prompt name used when a call names none. */
-    static final String DEFAULT_PROMPT = "default";
+    /** The template name used when a call names none. */
+    static final String DEFAULT_TEMPLATE = "default";
 
     private Resolver() {}
 
-    /** Resolves {@code useCaseKey} with the default prompt name. */
-    static UseCase resolve(UseCaseDocument document, String useCaseKey) {
-        return resolve(document, useCaseKey, null, Source.MANUAL, null);
+    /** Resolves {@code promptKey} with the default template name. */
+    static Prompt resolve(PromptDocument document, String promptKey) {
+        return resolve(document, promptKey, null, PromptSource.MANUAL, null);
     }
 
-    /** Resolves {@code useCaseKey} with an explicit prompt name ({@code null} means default). */
-    static UseCase resolve(UseCaseDocument document, String useCaseKey, String promptName) {
-        return resolve(document, useCaseKey, promptName, Source.MANUAL, null);
+    /** Resolves {@code promptKey} with an explicit template name ({@code null} means default). */
+    static Prompt resolve(PromptDocument document, String promptKey, String templateName) {
+        return resolve(document, promptKey, templateName, PromptSource.MANUAL, null);
     }
 
     /**
      * Resolves, recording where the prompt document came from.
      *
      * @param document the document to resolve against
-     * @param useCaseKey the prompt key
-     * @param promptName the prompt name, or {@code null} for {@value #DEFAULT_PROMPT}
+     * @param promptKey the prompt key
+     * @param templateName the template name, or {@code null} for {@value #DEFAULT_TEMPLATE}
      * @param source where the prompt document came from
      * @param etag the prompt document's ETag, or {@code null}
      * @return the pin for this call
      */
-    static UseCase resolve(
-            UseCaseDocument document,
-            String useCaseKey,
-            String promptName,
-            Source source,
+    static Prompt resolve(
+            PromptDocument document,
+            String promptKey,
+            String templateName,
+            PromptSource source,
             String etag) {
-        UseCaseDocument.UseCase useCase = document.useCases().get(useCaseKey);
-        if (useCase == null) {
-            throw UseCaseException.of(UseCaseException.Reason.UNKNOWN_USE_CASE, useCaseKey);
+        PromptDocument.Prompt prompt = document.prompts().get(promptKey);
+        if (prompt == null) {
+            throw PromptException.of(PromptException.Reason.UNKNOWN_PROMPT, promptKey);
         }
-        UseCaseDocument.Deployment deployment = document.deployments().get(useCaseKey);
+        PromptDocument.Deployment deployment = document.deployments().get(promptKey);
         if (deployment == null) {
-            throw UseCaseException.of(UseCaseException.Reason.UNRESOLVED, useCaseKey);
+            throw PromptException.of(PromptException.Reason.UNRESOLVED, promptKey);
         }
 
-        List<String> promptNames = useCase.kind() == UseCaseKind.EMBEDDING
-                ? List.of() : List.copyOf(deployment.promptPins().keySet());
+        List<String> templateNames = prompt.kind() == PromptKind.EMBEDDING
+                ? List.of() : List.copyOf(deployment.templatePins().keySet());
         String selected = null;
         String versionId = null;
-        if (useCase.kind() != UseCaseKind.EMBEDDING) {
-            selected = promptName == null || promptName.isEmpty() ? DEFAULT_PROMPT : promptName;
-            versionId = deployment.promptPins().get(selected);
+        if (prompt.kind() != PromptKind.EMBEDDING) {
+            selected = templateName == null || templateName.isEmpty() ? DEFAULT_TEMPLATE : templateName;
+            versionId = deployment.templatePins().get(selected);
             if (versionId == null) {
-                throw UseCaseException.unknownPrompt(useCaseKey, selected, promptNames);
+                throw PromptException.unknownTemplate(promptKey, selected, templateNames);
             }
         }
 
         List<String> warnings = new ArrayList<>();
-        UseCaseDocument.PromptVersion version = null;
+        PromptDocument.PromptVersion version = null;
         if (versionId != null) {
             version = document.promptVersions().get(versionId);
             if (version == null) {
                 warnings.add("missing_prompt_version: " + versionId);
             }
         }
-        UseCaseDocument.Model model = null;
+        PromptDocument.Model model = null;
         if (deployment.modelId() != null) {
             model = document.models().get(deployment.modelId());
             if (model == null) {
@@ -92,30 +92,30 @@ final class Resolver {
             }
         }
 
-        Map<String, Object> params = Params.merge(useCase.defaultParams(), deployment.params());
+        Map<String, Object> params = Params.merge(prompt.defaultParams(), deployment.params());
         if (version != null) {
             params = Params.mergeTools(params, version.tools());
         }
         Map<String, Object> providerOptions = Params.merge(
                 model == null ? null : model.providerOptions(), deployment.providerOptions());
-        UseCaseKind runtimeKind = version == null || version.kind() == null
-                ? useCase.kind()
+        PromptKind runtimeKind = version == null || version.kind() == null
+                ? prompt.kind()
                 : version.kind();
 
-        UseCase.Builder builder = new UseCase.Builder()
-                .key(useCaseKey)
+        Prompt.Builder builder = new Prompt.Builder()
+                .key(promptKey)
                 .kind(runtimeKind)
                 .deploymentId(deployment.id())
                 .deploymentRevision(deployment.revision())
-                .prompt(selected)
-                .promptNames(promptNames)
+                .template(selected)
+                .templateNames(templateNames)
                 .api(deployment.api())
                 .requestPath(deployment.requestPath())
                 .pinnedKind(version == null ? null : version.kind())
                 .params(params)
                 .providerOptions(providerOptions)
-                .variables(useCase.variables())
-                .payloadPolicy(useCase.payloadPolicy())
+                .variables(prompt.variables())
+                .payloadPolicy(prompt.payloadPolicy())
                 .source(source)
                 .etag(etag)
                 .warnings(warnings);
@@ -129,11 +129,11 @@ final class Resolver {
             builder.promptVersionId(null)
                     .promptVersionNumber(version.number())
                     .engine(version.engine());
-            if (runtimeKind == UseCaseKind.CHAT) {
+            if (runtimeKind == PromptKind.CHAT) {
                 builder.messages(version.messages());
-            } else if (runtimeKind == UseCaseKind.DECISION) {
+            } else if (runtimeKind == PromptKind.DECISION) {
                 builder.decision(version.decision());
-            } else if (runtimeKind == UseCaseKind.TEXT) {
+            } else if (runtimeKind == PromptKind.TEXT) {
                 builder.textTemplate(version.textTemplate());
             }
         }

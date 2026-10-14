@@ -16,40 +16,40 @@ import org.junit.jupiter.api.Test;
 /** The prompt loading rules that decide what a call sends, and what they refuse to guess. */
 class ResolverTest {
 
-    private static final UseCaseDocument SNAPSHOT = UseCaseDocument.parse(Fixtures.production());
+    private static final PromptDocument SNAPSHOT = PromptDocument.parse(Fixtures.production());
 
     @Test
     void paramsAndProviderOptionsAreLayeredShallowlyWithTheDeploymentOnTop() {
-        UseCase pin = Resolver.resolve(SNAPSHOT, "greeting");
+        Prompt pin = Resolver.resolve(SNAPSHOT, "greeting");
         assertEquals(Map.of("max_tokens", 512, "temperature", 0.2), pin.params());
         assertEquals(Map.of("only", List.of("OpenAI"), "allow_fallbacks", true),
                 pin.providerOptions());
     }
 
     @Test
-    void anUnpinnedPromptNameIsAnErrorAndNeverFallsBackToDefault() {
-        UseCaseException e = assertThrows(UseCaseException.class,
+    void anUnpinnedTemplateNameIsAnErrorAndNeverFallsBackToDefault() {
+        PromptException e = assertThrows(PromptException.class,
                 () -> Resolver.resolve(SNAPSHOT, "greeting", "fr"));
-        assertEquals(UseCaseException.Reason.UNKNOWN_PROMPT, e.reason());
-        assertEquals("fr", e.prompt());
-        assertEquals(List.of("default"), e.promptNames());
+        assertEquals(PromptException.Reason.UNKNOWN_TEMPLATE, e.reason());
+        assertEquals("fr", e.template());
+        assertEquals(List.of("default"), e.templateNames());
     }
 
     @Test
-    void aUseCaseWithNoLiveDeploymentIsUnresolvedRatherThanUnknown() {
-        assertEquals(UseCaseException.Reason.UNRESOLVED,
-                assertThrows(UseCaseException.class,
+    void aPromptWithNoLiveDeploymentIsUnresolvedRatherThanUnknown() {
+        assertEquals(PromptException.Reason.UNRESOLVED,
+                assertThrows(PromptException.class,
                         () -> Resolver.resolve(SNAPSHOT, "draft")).reason());
-        assertEquals(UseCaseException.Reason.UNKNOWN_USE_CASE,
-                assertThrows(UseCaseException.class,
+        assertEquals(PromptException.Reason.UNKNOWN_PROMPT,
+                assertThrows(PromptException.class,
                         () -> Resolver.resolve(SNAPSHOT, "nope")).reason());
     }
 
     @Test
-    void anEmbeddingUseCaseIgnoresAPromptName() {
-        UseCase pin = Resolver.resolve(SNAPSHOT, "embed", "ko");
-        assertEquals(UseCaseKind.EMBEDDING, pin.kind());
-        assertNull(pin.prompt());
+    void anEmbeddingPromptIgnoresATemplateName() {
+        Prompt pin = Resolver.resolve(SNAPSHOT, "embed", "ko");
+        assertEquals(PromptKind.EMBEDDING, pin.kind());
+        assertNull(pin.template());
         assertNull(pin.promptVersionId());
         assertNull(pin.messages());
         assertNull(pin.textTemplate());
@@ -58,7 +58,7 @@ class ResolverTest {
 
     @Test
     void anExplicitNullOverrideIsKeptRatherThanRemovingTheKey() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -115,7 +115,7 @@ class ResolverTest {
               }
             }
             """);
-        UseCase pin = Resolver.resolve(snapshot, "greeting");
+        Prompt pin = Resolver.resolve(snapshot, "greeting");
 
         assertTrue(pin.params().containsKey("seed"));
         assertNull(pin.params().get("seed"));
@@ -127,7 +127,7 @@ class ResolverTest {
 
     @Test
     void deploymentRevisionMustBeAString() {
-        PromptOnException e = assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        PromptOnException e = assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -158,7 +158,7 @@ class ResolverTest {
 
     @Test
     void nativeToolMessagesSurviveRenderingAsWholeProviderMaps() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -235,10 +235,9 @@ class ResolverTest {
               }
             }
             """);
-        UseCase pin = Resolver.resolve(snapshot, "tool_chat");
-        List<Object> actual = pin.messages(Map.of("input", "continue")).stream()
+        Prompt pin = Resolver.resolve(snapshot, "tool_chat");
+        List<?> actual = pin.messages(Map.of("input", "continue")).stream()
                 .map(Message::toMap)
-                .map(x -> (Object) x)
                 .toList();
         List<Object> expected = Json.listAt(Json.parseObject("""
             {"messages":[
@@ -253,7 +252,7 @@ class ResolverTest {
 
     @Test
     void promptToolsBecomeProviderParamsAndStripAuthoringMetadata() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -327,7 +326,7 @@ class ResolverTest {
               }
             }
             """);
-        UseCase pin = Resolver.resolve(snapshot, "tool_chat");
+        Prompt pin = Resolver.resolve(snapshot, "tool_chat");
         Map<String, Object> params = pin.params();
         List<?> tools = (List<?>) params.get("tools");
         Map<String, Object> tool = Conformance.map(tools.get(0));
@@ -339,7 +338,7 @@ class ResolverTest {
 
     @Test
     void promptToolsConflictWithDifferentLegacyProviderParams() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -397,15 +396,15 @@ class ResolverTest {
     }
 
     @Test
-    void promptNamesListsWhatTheLiveDeploymentPins() {
-        assertEquals(List.of("default"), SNAPSHOT.promptNames("greeting"));
-        assertEquals(List.of(), SNAPSHOT.promptNames("draft"));
-        assertThrows(UseCaseException.class, () -> SNAPSHOT.promptNames("nope"));
+    void templateNamesListsWhatTheLiveDeploymentPins() {
+        assertEquals(List.of("default"), SNAPSHOT.templateNames("greeting"));
+        assertEquals(List.of(), SNAPSHOT.templateNames("draft"));
+        assertThrows(PromptException.class, () -> SNAPSHOT.templateNames("nope"));
     }
 
     @Test
     void aSnapshotThatReferencesWhatItDoesNotContainStillResolvesWithWarnings() {
-        UseCaseDocument degraded = UseCaseDocument.parse("""
+        PromptDocument degraded = PromptDocument.parse("""
             {
               "schema_version": 1,
               "project": "p",
@@ -431,7 +430,7 @@ class ResolverTest {
               "models": {}
             }
             """);
-        UseCase pin = Resolver.resolve(degraded, "greeting");
+        Prompt pin = Resolver.resolve(degraded, "greeting");
         assertNull(pin.model());
         assertNull(pin.promptVersionId());
         assertEquals(List.of("missing_prompt_version: greeting@1", "missing_model: openrouter:gone"),
@@ -440,7 +439,7 @@ class ResolverTest {
 
     @Test
     void offlineBundleUsesReadableResourceReferencesWithoutPublicIds() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {
                "greeting": {"kind": "chat", "default_params": {"temperature": 0.5}},
@@ -473,7 +472,7 @@ class ResolverTest {
              }}
             """);
 
-        UseCase greeting = Resolver.resolve(snapshot, "greeting");
+        Prompt greeting = Resolver.resolve(snapshot, "greeting");
         assertEquals(1, snapshot.schemaVersion());
         assertNull(greeting.deploymentId());
         assertNull(greeting.modelId());
@@ -483,18 +482,18 @@ class ResolverTest {
         assertEquals("shared/model", greeting.model());
         assertEquals("Hello Ada", greeting.messages(Map.of("name", "Ada")).get(0).content());
 
-        UseCase classify = Resolver.resolve(snapshot, "classify");
+        Prompt classify = Resolver.resolve(snapshot, "classify");
         assertNull(classify.modelId());
         assertNull(classify.promptVersionId());
         assertEquals(2, classify.promptVersionNumber());
         assertEquals("anthropic", classify.provider());
-        assertEquals(UseCaseKind.DECISION, classify.kind());
+        assertEquals(PromptKind.DECISION, classify.kind());
         assertEquals(Map.of("text", "great"), classify.decision(Map.of("text", "great")).state());
     }
 
     @Test
     void offlineBundleWarningsUseReadableMissingReferences() {
-        UseCaseDocument degraded = UseCaseDocument.parse("""
+        PromptDocument degraded = PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
@@ -502,7 +501,7 @@ class ResolverTest {
                                           "params": {}, "provider_options": {}}},
              "prompt_versions": {}, "models": {}}
             """);
-        UseCase pin = Resolver.resolve(degraded, "greeting");
+        Prompt pin = Resolver.resolve(degraded, "greeting");
         assertEquals(List.of("missing_prompt_version: greeting@3", "missing_model: openrouter:missing:model"),
                 pin.warnings());
         assertNull(pin.modelId());
@@ -511,7 +510,7 @@ class ResolverTest {
 
     @Test
     void offlineBundleRejectsPromptVersionKeysThatDoNotMatchEmbeddedPromptAndNumber() {
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
@@ -528,7 +527,7 @@ class ResolverTest {
 
     @Test
     void offlineBundleRejectsModelKeysThatDoNotMatchEmbeddedProviderAndModel() {
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
@@ -545,7 +544,7 @@ class ResolverTest {
 
     @Test
     void offlineBundlePreservesModelNamesContainingColons() {
-        UseCaseDocument snapshot = UseCaseDocument.parse("""
+        PromptDocument snapshot = PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
@@ -573,7 +572,7 @@ class ResolverTest {
                 ", \"prompt_version\": 0",
                 ", \"prompt_version\": -1");
         for (String fragment : invalidFragments) {
-            assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+            assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
                 {"schema_version": 1, "project": "p", "environment": "production",
                  "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
                  "deployments": {"greeting": {"revision": "v2026.10.14-1", "provider": "openrouter",
@@ -591,7 +590,7 @@ class ResolverTest {
 
     @Test
     void offlineBundleDoesNotAcceptLegacyDeploymentAliases() {
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompts": {"greeting": {"kind": "chat", "default_params": {}}},
              "deployments": {"greeting": {"revision": "v2026.10.14-1", "model_id": "openrouter:m",
@@ -608,37 +607,37 @@ class ResolverTest {
 
     @Test
     void singleDetailSinglePromptChatDocumentsResolveFromSingularResources() {
-        UseCaseDocument document = UseCaseDocument.parse(singleDetailChat());
+        PromptDocument document = PromptDocument.parse(singleDetailChat());
 
-        UseCase useCase = Resolver.resolve(document, "support_reply");
-        PreparedRequest request = useCase.request(Map.of("question", "pricing", "plan", "pro"));
+        Prompt prompt = Resolver.resolve(document, "support_reply");
+        PreparedRequest request = prompt.request(Map.of("question", "pricing", "plan", "pro"));
 
         assertEquals(1, document.schemaVersion());
-        assertEquals("support_reply", useCase.key());
-        assertEquals("openrouter", useCase.provider());
-        assertEquals("anthropic/claude-sonnet-4", useCase.model());
-        assertEquals(1, useCase.promptVersionNumber());
-        assertNull(useCase.deploymentId());
-        assertNull(useCase.modelId());
-        assertNull(useCase.promptVersionId());
+        assertEquals("support_reply", prompt.key());
+        assertEquals("openrouter", prompt.provider());
+        assertEquals("anthropic/claude-sonnet-4", prompt.model());
+        assertEquals(1, prompt.promptVersionNumber());
+        assertNull(prompt.deploymentId());
+        assertNull(prompt.modelId());
+        assertNull(prompt.promptVersionId());
         assertEquals("chat_completions", request.api());
         assertEquals("/api/v1/chat/completions", request.path());
         assertEquals("anthropic/claude-sonnet-4", request.body().get("model"));
         assertTrue(request.body().containsKey("usage"));
-        assertEquals("Reply to pricing for pro.", useCase.messages(Map.of(
+        assertEquals("Reply to pricing for pro.", prompt.messages(Map.of(
                 "question", "pricing", "plan", "pro")).get(1).content());
     }
 
     @Test
     void singleDetailSinglePromptDecisionDocumentsPrepareDecisionRequests() {
-        UseCaseDocument document = UseCaseDocument.parse(singleDetailDecision());
+        PromptDocument document = PromptDocument.parse(singleDetailDecision());
 
-        UseCase useCase = Resolver.resolve(document, "decision_triage");
-        PreparedRequest request = useCase.request(Map.of(
+        Prompt prompt = Resolver.resolve(document, "decision_triage");
+        PreparedRequest request = prompt.request(Map.of(
                         "ticket", "T-1", "plan", "team", "region", "eu"),
                 RequestOptions.builder().sessionId("session-1").user("user-1").build());
 
-        assertEquals(UseCaseKind.DECISION, useCase.kind());
+        assertEquals(PromptKind.DECISION, prompt.kind());
         assertEquals("decisions", request.api());
         assertEquals("/api/v1/systemone", request.path());
         assertEquals("typesafe/jev-1.13", request.body().get("model"));
@@ -661,10 +660,10 @@ class ResolverTest {
 
     @Test
     void singleDetailRejectsIncompleteMixedOrMismatchedSinglePromptDocuments() {
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production", "prompts": {}}
             """));
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 2},
@@ -672,7 +671,7 @@ class ResolverTest {
                                 "messages": [{"role": "user", "content": "Hi"}]},
              "model": {"provider": "openrouter", "model": "m"}}
             """));
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 3},
@@ -680,7 +679,7 @@ class ResolverTest {
                                 "messages": [{"role": "user", "content": "Hi"}]},
              "model": {"provider": "openrouter", "model": "m"}}
             """));
-        assertThrows(PromptOnException.class, () -> UseCaseDocument.parse("""
+        assertThrows(PromptOnException.class, () -> PromptDocument.parse("""
             {"schema_version": 1, "project": "p", "environment": "production",
              "prompt": {"key": "greeting", "kind": "chat"},
              "deployment": {"provider": "openrouter", "model": "m", "prompt_version": 2},

@@ -59,9 +59,9 @@ class MonitoringLogTest {
                 .requestTimeout(Duration.ofSeconds(3));
     }
 
-    private static LogRecord record(String useCase) {
+    private static LogRecord record(String promptKey) {
         return LogRecord.builder()
-                .key(useCase)
+                .key(promptKey)
                 .model("openai/gpt-4o-mini")
                 .status(LogRecord.Status.OK)
                 .startedAt(Instant.now())
@@ -317,10 +317,10 @@ class MonitoringLogTest {
     @Test
     void testModeCapturesRecordsAndMakesNoHttpCall() {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             prompton.log(LogRecord.builder()
-                    .useCase(pin)
+                    .prompt(pin)
                     .status(LogRecord.Status.OK)
                     .startedAt(Instant.now())
                     .output(Map.of("content", "Hello, Ada!"))
@@ -393,8 +393,8 @@ class MonitoringLogTest {
     @Test
     void trackTimesTheCallAndLogsIt() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             List<Message> messages = pin.messages(Map.of("name", "Ada"));
 
             String answer = pin.track(TrackMeta.builder()
@@ -440,8 +440,8 @@ class MonitoringLogTest {
     @Test
     void trackRecordsTheFinalMessagesComposedByTheApp() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             List<Message> managed = pin.messages(Map.of("name", "Ada"));
             List<Message> finalMessages = new ArrayList<>(managed);
             finalMessages.add(Message.of("assistant", "Earlier answer."));
@@ -486,8 +486,8 @@ class MonitoringLogTest {
     @Test
     void trackLogsTheExplicitDefaultPromptEvidence() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase korean = prompton.useCase("greeting", "default");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt korean = prompton.prompt("greeting", "default");
             List<Message> messages = korean.messages(Map.of("name", "Ada"));
 
             korean.track(TrackMeta.builder().inputMessages(messages).build(),
@@ -535,8 +535,8 @@ class MonitoringLogTest {
     @Test
     void trackLogsAFailureAndKeepsTheUsage() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
 
             String value = pin.track(TrackMeta.empty(),
                     () -> ProviderResult.error("fallback",
@@ -558,8 +558,8 @@ class MonitoringLogTest {
     @Test
     void anExceptionInsideTheCallIsLoggedAndRethrownUnchanged() {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             IllegalStateException boom = new IllegalStateException("provider exploded");
 
             IllegalStateException thrown = assertThrows(IllegalStateException.class, () ->
@@ -579,8 +579,8 @@ class MonitoringLogTest {
     @Test
     void closedReqTransportMessageInsideTheCallIsStillAppLoggedAndRethrown() {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             IllegalStateException boom = new IllegalStateException(
                     "failed to send request: %Req.TransportError{reason: :closed}");
 
@@ -712,8 +712,8 @@ class MonitoringLogTest {
     @Test
     void trackInputCopiesToolsAndToolPoliciesActuallySentToTheProvider() throws Exception {
         try (PromptOn prompton = PromptOn.create(config().mode(Mode.TEST).build())) {
-            prompton.putUseCaseDocument(Fixtures.production());
-            UseCase pin = prompton.useCase("greeting");
+            prompton.putPromptDocument(Fixtures.production());
+            Prompt pin = prompton.prompt("greeting");
             List<Message> messages = pin.messages(Map.of("name", "Ada"));
             List<Object> tools = List.of(Map.of(
                     "type", "function",

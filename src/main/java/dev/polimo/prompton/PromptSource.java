@@ -3,7 +3,7 @@ package dev.polimo.prompton;
 import java.util.Locale;
 
 /** Where the prompt document behind a prompt came from. Reported as {@code source}. */
-public enum Source {
+public enum PromptSource {
     /** Fetched from PromptOn. */
     REMOTE("remote"),
     /** Read from the local disk cache. */
@@ -15,7 +15,7 @@ public enum Source {
 
     private final String wireName;
 
-    Source(String wireName) {
+    PromptSource(String wireName) {
         this.wireName = wireName;
     }
 
@@ -25,7 +25,7 @@ public enum Source {
     }
 
     /** Parses a wire value; anything unrecognised is {@link #MANUAL}. */
-    public static Source from(String value) {
+    public static PromptSource from(String value) {
         if (value == null) {
             return MANUAL;
         }

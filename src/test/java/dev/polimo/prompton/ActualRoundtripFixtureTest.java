@@ -21,10 +21,10 @@ class ActualRoundtripFixtureTest {
         assumeTrue(Files.isRegularFile(FIXTURES.resolve("chat-detail.json"))
                 && Files.isRegularFile(FIXTURES.resolve("chat-variables.json"))
                 && Files.isRegularFile(FIXTURES.resolve("chat-render.json")));
-        UseCase useCase = Resolver.resolve(
-                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("chat-detail.json"))),
+        Prompt prompt = Resolver.resolve(
+                PromptDocument.parse(Files.readString(FIXTURES.resolve("chat-detail.json"))),
                 "support_reply");
-        PreparedRequest request = useCase.request(readMap("chat-variables.json"));
+        PreparedRequest request = prompt.request(readMap("chat-variables.json"));
         Map<String, Object> expected = Conformance.map(
                 Conformance.map(readMap("chat-render.json").get("request")).get("body"));
 
@@ -38,10 +38,10 @@ class ActualRoundtripFixtureTest {
         assumeTrue(Files.isRegularFile(FIXTURES.resolve("decision-detail.json"))
                 && Files.isRegularFile(FIXTURES.resolve("decision-variables.json"))
                 && Files.isRegularFile(FIXTURES.resolve("decision-render.json")));
-        UseCase useCase = Resolver.resolve(
-                UseCaseDocument.parse(Files.readString(FIXTURES.resolve("decision-detail.json"))),
+        Prompt prompt = Resolver.resolve(
+                PromptDocument.parse(Files.readString(FIXTURES.resolve("decision-detail.json"))),
                 "decision_triage");
-        PreparedRequest request = useCase.request(readMap("decision-variables.json"));
+        PreparedRequest request = prompt.request(readMap("decision-variables.json"));
         Map<String, Object> expected = Conformance.map(
                 Conformance.map(readMap("decision-render.json").get("request")).get("body"));
 

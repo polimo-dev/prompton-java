@@ -4,33 +4,33 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What to use for one call: the prompt document-backed configuration for a prompt, prompt name and
+ * What to use for one call: the prompt document-backed configuration for a prompt, template name and
  * environment.
  *
  * <p>The app sends {@link #model()} with {@link #params()} and
  * {@link #providerOptions()} to {@link #provider()} using <em>its own</em> key and HTTP
- * client, and records {@link #deploymentId()}, {@link #deploymentRevision()}, {@link #prompt()} and
+ * client, and records {@link #deploymentId()}, {@link #deploymentRevision()}, {@link #template()} and
  * {@link #promptVersionId()} in the monitoring log so a change in behaviour can be traced back to a
  * revision.
  *
  * <p>{@link #messages()} and {@link #textTemplate()} are the raw templates. Use
  * {@link #messages(Map)} or {@link #text(Map)} for the rendered prompt for one call.
  */
-public final class UseCase {
+public final class Prompt {
 
     private final PromptOn client;
     private final String key;
-    private final UseCaseKind kind;
+    private final PromptKind kind;
     private final String deploymentId;
     private final String deploymentRevision;
-    private final String prompt;
-    private final List<String> promptNames;
+    private final String template;
+    private final List<String> templateNames;
     private final String model;
     private final String modelId;
     private final String provider;
     private final String api;
     private final String requestPath;
-    private final UseCaseKind pinnedKind;
+    private final PromptKind pinnedKind;
     private final Map<String, Object> params;
     private final Map<String, Object> providerOptions;
     private final Map<String, Object> providerPreparedRequest;
@@ -42,18 +42,18 @@ public final class UseCase {
     private final Decision decision;
     private final List<Map<String, Object>> variables;
     private final PayloadPolicy payloadPolicy;
-    private final Source source;
+    private final PromptSource source;
     private final String etag;
     private final List<String> warnings;
 
-    UseCase(Builder builder) {
+    Prompt(Builder builder) {
         this.client = builder.client;
         this.key = builder.key;
         this.kind = builder.kind;
         this.deploymentId = builder.deploymentId;
         this.deploymentRevision = builder.deploymentRevision;
-        this.prompt = builder.prompt;
-        this.promptNames = List.copyOf(builder.promptNames);
+        this.template = builder.template;
+        this.templateNames = List.copyOf(builder.templateNames);
         this.model = builder.model;
         this.modelId = builder.modelId;
         this.provider = builder.provider;
@@ -76,7 +76,7 @@ public final class UseCase {
         this.warnings = List.copyOf(builder.warnings);
     }
 
-    UseCase attachTo(PromptOn client) {
+    Prompt attachTo(PromptOn client) {
         return new Builder(this).client(client).build();
     }
 
@@ -96,7 +96,7 @@ public final class UseCase {
     }
 
     /** Whether this is a chat, text or embedding call. */
-    public UseCaseKind kind() {
+    public PromptKind kind() {
         return kind;
     }
 
@@ -105,19 +105,19 @@ public final class UseCase {
         return deploymentId;
     }
 
-    /** The UTC-date deployment revision label, for example {@code v2026.09.30-1}. */
+    /** The UTC-date revision label of that deployment. */
     public String deploymentRevision() {
         return deploymentRevision;
     }
 
-    /** The prompt name that was selected, or {@code null} for an embedding prompt. */
-    public String prompt() {
-        return prompt;
+    /** The template name that was selected, or {@code null} for an embedding prompt. */
+    public String template() {
+        return template;
     }
 
-    /** Every prompt name the live deployment pins, sorted. */
-    public List<String> promptNames() {
-        return promptNames;
+    /** Every template name the live deployment pins, sorted. */
+    public List<String> templateNames() {
+        return templateNames;
     }
 
     /** The provider model string to send to the provider, for example {@code openai/gpt-4o-mini}. */
@@ -146,11 +146,11 @@ public final class UseCase {
     }
 
     /** Immutable pinned version kind, or {@code null} for legacy prompt documents. */
-    public UseCaseKind pinnedKind() {
+    public PromptKind pinnedKind() {
         return pinnedKind;
     }
 
-    /** {@code use_case.default_params} with {@code deployment.params} layered on top. */
+    /** {@code prompt.default_params} with {@code deployment.params} layered on top. */
     public Map<String, Object> params() {
         return params;
     }
@@ -192,7 +192,7 @@ public final class UseCase {
      * @throws TemplateException when a required variable is missing
      */
     public List<Message> messages(Map<String, Object> variables) {
-        if (kind != UseCaseKind.CHAT || messages == null) {
+        if (kind != PromptKind.CHAT || messages == null) {
             throw new PromptOnException(
                     "prompt " + key + " is of kind "
                             + kind.wireName() + " and has no chat template");
@@ -212,7 +212,7 @@ public final class UseCase {
      * @throws TemplateException when a required variable is missing
      */
     public String text(Map<String, Object> variables) {
-        if (kind != UseCaseKind.TEXT || textTemplate == null) {
+        if (kind != PromptKind.TEXT || textTemplate == null) {
             throw new PromptOnException(
                     "prompt " + key + " is of kind "
                             + kind.wireName() + " and has no text template");
@@ -232,7 +232,7 @@ public final class UseCase {
      * @throws TemplateException when a required variable is missing
      */
     public Decision decision(Map<String, Object> variables) {
-        if (kind != UseCaseKind.DECISION || decision == null) {
+        if (kind != PromptKind.DECISION || decision == null) {
             throw new PromptOnException(
                     "prompt " + key + " is of kind "
                             + kind.wireName() + " and has no Decision template");
@@ -262,7 +262,7 @@ public final class UseCase {
     }
 
     /** Where the prompt document behind this prompt came from. */
-    public Source source() {
+    public PromptSource source() {
         return source;
     }
 
@@ -299,31 +299,31 @@ public final class UseCase {
     private void requireClient() {
         if (client == null) {
             throw new PromptOnException(
-                    "this prompt is not attached to a PromptOn client; get it from PromptOn.useCase()");
+                    "this prompt is not attached to a PromptOn client; get it from PromptOn.prompt()");
         }
     }
 
     @Override
     public String toString() {
-        return "UseCase[" + key + " " + kind.wireName() + " prompt=" + prompt + " model="
+        return "Prompt[" + key + " " + kind.wireName() + " template=" + template + " model="
                 + model + " revision=" + deploymentRevision + " source=" + source.wireName() + "]";
     }
 
-    /** Assembles a {@link UseCase}. Used by {@link Resolver} and by the remote prompt client. */
+    /** Assembles a {@link Prompt}. Used by {@link Resolver} and by the remote prompt client. */
     public static final class Builder {
         private PromptOn client;
         private String key;
-        private UseCaseKind kind = UseCaseKind.CHAT;
+        private PromptKind kind = PromptKind.CHAT;
         private String deploymentId;
         private String deploymentRevision;
-        private String prompt;
-        private List<String> promptNames = List.of();
+        private String template;
+        private List<String> templateNames = List.of();
         private String model;
         private String modelId;
         private String provider;
         private String api;
         private String requestPath;
-        private UseCaseKind pinnedKind;
+        private PromptKind pinnedKind;
         private Map<String, Object> params = Map.of();
         private Map<String, Object> providerOptions = Map.of();
         private Map<String, Object> providerPreparedRequest = Map.of();
@@ -335,20 +335,20 @@ public final class UseCase {
         private Decision decision;
         private List<Map<String, Object>> variables = List.of();
         private PayloadPolicy payloadPolicy = PayloadPolicy.DEFAULT;
-        private Source source = Source.REMOTE;
+        private PromptSource source = PromptSource.REMOTE;
         private String etag;
         private List<String> warnings = List.of();
 
         public Builder() {}
 
-        private Builder(UseCase source) {
+        private Builder(Prompt source) {
             this.client = source.client;
             this.key = source.key;
             this.kind = source.kind;
             this.deploymentId = source.deploymentId;
             this.deploymentRevision = source.deploymentRevision;
-            this.prompt = source.prompt;
-            this.promptNames = source.promptNames;
+            this.template = source.template;
+            this.templateNames = source.templateNames;
             this.model = source.model;
             this.modelId = source.modelId;
             this.provider = source.provider;
@@ -383,7 +383,7 @@ public final class UseCase {
         }
 
         /** @param value chat, text or embedding */
-        public Builder kind(UseCaseKind value) {
+        public Builder kind(PromptKind value) {
             this.kind = value;
             return this;
         }
@@ -400,15 +400,15 @@ public final class UseCase {
             return this;
         }
 
-        /** @param value the selected prompt name */
-        public Builder prompt(String value) {
-            this.prompt = value;
+        /** @param value the selected template name */
+        public Builder template(String value) {
+            this.template = value;
             return this;
         }
 
-        /** @param value every prompt name the deployment pins */
-        public Builder promptNames(List<String> value) {
-            this.promptNames = value == null ? List.of() : value;
+        /** @param value every template name the deployment pins */
+        public Builder templateNames(List<String> value) {
+            this.templateNames = value == null ? List.of() : value;
             return this;
         }
 
@@ -443,7 +443,7 @@ public final class UseCase {
         }
 
         /** @param value immutable pinned version kind */
-        public Builder pinnedKind(UseCaseKind value) {
+        public Builder pinnedKind(PromptKind value) {
             this.pinnedKind = value;
             return this;
         }
@@ -515,8 +515,8 @@ public final class UseCase {
         }
 
         /** @param value where the prompt document came from */
-        public Builder source(Source value) {
-            this.source = value == null ? Source.MANUAL : value;
+        public Builder source(PromptSource value) {
+            this.source = value == null ? PromptSource.MANUAL : value;
             return this;
         }
 
@@ -533,8 +533,8 @@ public final class UseCase {
         }
 
         /** Builds the prompt. */
-        public UseCase build() {
-            return new UseCase(this);
+        public Prompt build() {
+            return new Prompt(this);
         }
     }
 }

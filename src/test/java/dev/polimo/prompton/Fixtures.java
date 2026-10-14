@@ -1,12 +1,12 @@
 package dev.polimo.prompton;
 
-/** Use-case documents the unit tests read against. */
+/** Prompt documents the unit tests read against. */
 final class Fixtures {
 
     private Fixtures() {}
 
     /** A production prompt document with a chat, a text and an embedding prompt. */
-    static String useCaseDocument(String environment, String project, String greetingSystemPrompt) {
+    static String promptDocument(String environment, String project, String greetingSystemPrompt) {
         return """
             {
               "schema_version": 1,
@@ -169,17 +169,17 @@ final class Fixtures {
 
     /** The production prompt document with the default greeting. */
     static String production() {
-        return useCaseDocument("production", "sdkfixture", "You are a friendly greeter.");
+        return promptDocument("production", "sdkfixture", "You are a friendly greeter.");
     }
 
     /** The production prompt document with a different greeting, so a refresh is observable. */
     static String productionV2() {
-        return useCaseDocument("production", "sdkfixture", "You are a very friendly greeter.");
+        return promptDocument("production", "sdkfixture", "You are a very friendly greeter.");
     }
 
     /** The same document, but for staging. */
     static String staging() {
-        return useCaseDocument("staging", "sdkfixture", "You are a greeter (staging build).");
+        return promptDocument("staging", "sdkfixture", "You are a greeter (staging build).");
     }
 
     /** A schema-v7 document with one native Decision prompt. */

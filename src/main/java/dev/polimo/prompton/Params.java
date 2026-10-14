@@ -11,7 +11,7 @@ import java.util.TreeMap;
  * Shallow-merge helper for the two parameter maps the resolver layers.
  *
  * <pre>
- * params           = use_case.default_params &lt;- deployment.params
+ * params           = prompt.default_params &lt;- deployment.params
  * provider_options = model.provider_options   &lt;- deployment.provider_options
  * </pre>
  *

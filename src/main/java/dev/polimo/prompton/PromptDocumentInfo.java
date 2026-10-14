@@ -16,8 +16,8 @@ import java.time.Instant;
  * @param project the project the document belongs to
  * @param environment the environment it describes
  */
-public record UseCaseDocumentInfo(
-        Source source,
+public record PromptDocumentInfo(
+        PromptSource source,
         String etag,
         String lastModified,
         Instant fetchedAt,
@@ -27,8 +27,8 @@ public record UseCaseDocumentInfo(
         String environment) {
 
     /** Nothing is loaded. */
-    public static final UseCaseDocumentInfo NONE =
-            new UseCaseDocumentInfo(null, null, null, null, true, null, null, null);
+    public static final PromptDocumentInfo NONE =
+            new PromptDocumentInfo(null, null, null, null, true, null, null, null);
 
     /** Whether any document is in memory at all. */
     public boolean loaded() {

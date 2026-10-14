@@ -2,7 +2,7 @@ package dev.polimo.prompton;
 
 import java.util.Map;
 
-/** Per-call overrides for {@link UseCase#request(Map, RequestOptions)}. */
+/** Per-call overrides for {@link Prompt#request(Map, RequestOptions)}. */
 public final class RequestOptions {
 
     private final Map<String, Object> params;
